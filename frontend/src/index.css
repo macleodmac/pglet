@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── pglet design tokens ─────────────────────────────────── */
+
+@theme {
+  /* Accent — sage teal built from #92C5B9 */
+  --color-accent-50:  #f0f9f6;
+  --color-accent-100: #d6efe8;
+  --color-accent-200: #b1e0d4;
+  --color-accent-300: #92c5b9;
+  --color-accent-400: #6bab9e;
+  --color-accent-500: #4f9385;
+  --color-accent-600: #3d7568;
+  --color-accent-700: #2f5b51;
+
+  /* Surface — warm-tinted neutrals for light mode */
+  --color-surface-50:  #fafaf9;
+  --color-surface-100: #f5f5f4;
+  --color-surface-200: #e7e5e4;
+  --color-surface-300: #d6d3d1;
+
+  /* Surface dark — cool-tinted for dark mode depth */
+  --color-surface-800: #1c1c1e;
+  --color-surface-850: #161618;
+  --color-surface-900: #111113;
+  --color-surface-950: #0a0a0c;
+
+  /* Semantic */
+  --color-success: #22c55e;
+  --color-danger:  #ef4444;
+  --color-info:    #3b82f6;
+
+  /* Font stacks */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ── Base layer ──────────────────────────────────────────── */
+
+body {
+  font-feature-settings: 'ss01', 'cv01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.011em;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-300);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-200);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #2a2a2e;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3e;
+}
+
+/* ── Selection ───────────────────────────────────────────── */
+
+::selection {
+  background: var(--color-accent-200);
+  color: var(--color-surface-900);
+}
+
+.dark ::selection {
+  background: var(--color-accent-700);
+  color: white;
+}
+
+/* ── Focus ring ──────────────────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent-400);
+  outline-offset: 1px;
+}
+
+/* ── Transitions ─────────────────────────────────────────── */
+
+button, a, select, input, textarea {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+/* ── Keyframes ───────────────────────────────────────────── */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-fade-in {
+  animation: fade-in 200ms ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.typing-dot {
+  animation: typing-dot 1.4s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}

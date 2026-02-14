@@ -1,0 +1,967 @@
+openapi: 3.0.3
+info:
+  title: pglet API
+  version: 0.1.0
+  description: PostgreSQL database browser API
+
+paths:
+  /api/connect:
+    post:
+      operationId: connect
+      summary: Connect to a PostgreSQL database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectRequest'
+      responses:
+        '200':
+          description: Connection info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionInfo'
+        '400':
+          description: Connection failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/disconnect:
+    post:
+      operationId: disconnect
+      summary: Disconnect from the database
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/switchdb:
+    post:
+      operationId: switchDatabase
+      summary: Switch to a different database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwitchDBRequest'
+      responses:
+        '200':
+          description: Connection info for new database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionInfo'
+
+  /api/connection:
+    get:
+      operationId: getConnectionInfo
+      summary: Get current connection info
+      responses:
+        '200':
+          description: Connection info or disconnected state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionInfo'
+
+  /api/databases:
+    get:
+      operationId: listDatabases
+      summary: List all databases on the server
+      responses:
+        '200':
+          description: List of database names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /api/info:
+    get:
+      operationId: getAppInfo
+      summary: Get app version and feature flags
+      responses:
+        '200':
+          description: App info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppInfo'
+
+  /api/schemas:
+    get:
+      operationId: listSchemas
+      summary: List database schemas
+      responses:
+        '200':
+          description: List of schema names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /api/objects:
+    get:
+      operationId: listObjects
+      summary: All objects grouped by schema and type
+      responses:
+        '200':
+          description: Schema objects map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/SchemaGroup'
+
+  /api/tables/{table}:
+    get:
+      operationId: getTableColumns
+      summary: Get table column definitions
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Column list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Column'
+
+  /api/tables/{table}/rows:
+    get:
+      operationId: getTableRows
+      summary: Paginated table data
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: sort_column
+          in: query
+          schema:
+            type: string
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [ASC, DESC]
+      responses:
+        '200':
+          description: Paginated rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableRowsResult'
+
+  /api/tables/{table}/info:
+    get:
+      operationId: getTableInfo
+      summary: Table size and row estimates
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Table info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
+
+  /api/tables/{table}/indexes:
+    get:
+      operationId: getTableIndexes
+      summary: Table indexes
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Index list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TableIndex'
+
+  /api/tables/{table}/constraints:
+    get:
+      operationId: getTableConstraints
+      summary: Table constraints
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Constraint list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TableConstraint'
+
+  /api/functions/{function}:
+    get:
+      operationId: getFunctionDefinition
+      summary: Get function or procedure source code
+      parameters:
+        - name: function
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Function definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionDefinition'
+
+  /api/tables_stats:
+    get:
+      operationId: getTablesStats
+      summary: All tables size and row stats
+      responses:
+        '200':
+          description: Query result with table stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResult'
+
+  /api/activity:
+    get:
+      operationId: getActivity
+      summary: Running queries from pg_stat_activity
+      responses:
+        '200':
+          description: Activity list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Activity'
+
+  /api/server_settings:
+    get:
+      operationId: getServerSettings
+      summary: PostgreSQL server settings
+      responses:
+        '200':
+          description: Server settings as query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResult'
+
+  /api/query:
+    post:
+      operationId: runQuery
+      summary: Execute SQL query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResult'
+
+  /api/explain:
+    post:
+      operationId: explainQuery
+      summary: EXPLAIN a SQL query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Explain result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResult'
+
+  /api/analyze:
+    post:
+      operationId: analyzeQuery
+      summary: EXPLAIN ANALYZE a SQL query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Analyze result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResult'
+
+  /api/query/cancel:
+    post:
+      operationId: cancelQuery
+      summary: Cancel a running query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/export:
+    post:
+      operationId: exportQuery
+      summary: Export query results as CSV or JSON
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        '200':
+          description: Exported data as CSV or JSON
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Query execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/saved-queries:
+    get:
+      operationId: listSavedQueries
+      summary: List saved queries
+      parameters:
+        - name: database
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Saved query list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SavedQuery'
+    post:
+      operationId: createSavedQuery
+      summary: Create a saved query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedQueryInput'
+      responses:
+        '201':
+          description: Created saved query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedQuery'
+
+  /api/saved-queries/{id}:
+    get:
+      operationId: getSavedQuery
+      summary: Get a saved query by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Saved query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedQuery'
+    put:
+      operationId: updateSavedQuery
+      summary: Update a saved query
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedQueryInput'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+    delete:
+      operationId: deleteSavedQuery
+      summary: Delete a saved query
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/history:
+    get:
+      operationId: listHistory
+      summary: List query history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: History entries with total count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+    delete:
+      operationId: clearHistory
+      summary: Clear all query history
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/settings:
+    get:
+      operationId: getSettings
+      summary: Get all settings
+      responses:
+        '200':
+          description: Settings map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+    put:
+      operationId: updateSettings
+      summary: Update settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/ai/generate:
+    post:
+      operationId: aiGenerate
+      summary: Generate SQL from natural language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiGenerateRequest'
+      responses:
+        '200':
+          description: Generated SQL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiGenerateResponse'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+
+    ConnectRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+
+    SwitchDBRequest:
+      type: object
+      required: [database]
+      properties:
+        database:
+          type: string
+
+    ConnectionInfo:
+      type: object
+      required: [host, port, user, database, version]
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        user:
+          type: string
+        database:
+          type: string
+        version:
+          type: string
+        connected:
+          type: boolean
+
+    AppInfo:
+      type: object
+      properties:
+        version:
+          type: string
+
+    SchemaObject:
+      type: object
+      required: [name, schema, type]
+      properties:
+        name:
+          type: string
+        schema:
+          type: string
+        type:
+          type: string
+        comment:
+          type: string
+
+    SchemaGroup:
+      type: object
+      required: [tables, views, materialized_views, functions, sequences, types]
+      properties:
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaObject'
+        views:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaObject'
+        materialized_views:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaObject'
+        functions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaObject'
+        sequences:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaObject'
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaObject'
+
+    Column:
+      type: object
+      required: [name, type, nullable, position, is_primary_key]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        nullable:
+          type: boolean
+        default_value:
+          type: string
+          nullable: true
+        comment:
+          type: string
+        position:
+          type: integer
+        is_primary_key:
+          type: boolean
+
+    TableInfo:
+      type: object
+      required: [total_size, table_size, index_size, row_estimate]
+      properties:
+        total_size:
+          type: string
+        table_size:
+          type: string
+        index_size:
+          type: string
+        row_estimate:
+          type: integer
+          format: int64
+
+    TableIndex:
+      type: object
+      required: [name, definition, is_unique, is_primary]
+      properties:
+        name:
+          type: string
+        definition:
+          type: string
+        is_unique:
+          type: boolean
+        is_primary:
+          type: boolean
+        columns:
+          type: array
+          items:
+            type: string
+
+    TableConstraint:
+      type: object
+      required: [name, type, definition]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        definition:
+          type: string
+        columns:
+          type: array
+          items:
+            type: string
+
+    CellValue:
+      type: string
+      nullable: true
+      x-go-type: '*string'
+
+    QueryResult:
+      type: object
+      required: [columns, column_types, rows, row_count, duration_ms]
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        column_types:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/CellValue'
+        row_count:
+          type: integer
+        duration_ms:
+          type: integer
+          format: int64
+        error:
+          type: string
+
+    TableRowsResult:
+      type: object
+      required: [columns, column_types, rows, total_count, page, page_size]
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        column_types:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/CellValue'
+        total_count:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    QueryRequest:
+      type: object
+      required: [query, tab_id]
+      properties:
+        query:
+          type: string
+        tab_id:
+          type: string
+
+    CancelRequest:
+      type: object
+      required: [tab_id]
+      properties:
+        tab_id:
+          type: string
+
+    ExportRequest:
+      type: object
+      required: [query, format]
+      properties:
+        query:
+          type: string
+        format:
+          type: string
+          enum: [csv, json]
+
+    SavedQuery:
+      type: object
+      required: [id, title, description, sql, database, tags, shared, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        sql:
+          type: string
+        database:
+          type: string
+        tags:
+          type: string
+        shared:
+          type: boolean
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    SavedQueryInput:
+      type: object
+      required: [title, sql]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          default: ''
+        sql:
+          type: string
+        database:
+          type: string
+          default: ''
+        tags:
+          type: string
+          default: ''
+
+    HistoryEntry:
+      type: object
+      required: [id, sql, database, duration_ms, row_count, error, executed_at]
+      properties:
+        id:
+          type: integer
+        sql:
+          type: string
+        database:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        row_count:
+          type: integer
+        error:
+          type: string
+        executed_at:
+          type: string
+
+    HistoryResponse:
+      type: object
+      required: [entries, total]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryEntry'
+        total:
+          type: integer
+
+    Activity:
+      type: object
+      required: [pid, database, user, application, client_addr, state, query, duration, wait_event, wait_event_type]
+      properties:
+        pid:
+          type: integer
+        database:
+          type: string
+        user:
+          type: string
+        application:
+          type: string
+        client_addr:
+          type: string
+        state:
+          type: string
+        query:
+          type: string
+        duration:
+          type: string
+        wait_event:
+          type: string
+        wait_event_type:
+          type: string
+
+    FunctionDefinition:
+      type: object
+      required: [name, schema, definition, language, arguments, return_type, volatility, kind]
+      properties:
+        name:
+          type: string
+        schema:
+          type: string
+        definition:
+          type: string
+        language:
+          type: string
+        arguments:
+          type: string
+        return_type:
+          type: string
+        volatility:
+          type: string
+        kind:
+          type: string
+
+    AiGenerateRequest:
+      type: object
+      required: [prompt, database]
+      properties:
+        prompt:
+          type: string
+        database:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiMessage'
+
+    AiGenerateResponse:
+      type: object
+      required: [sql, explanation]
+      properties:
+        sql:
+          type: string
+        explanation:
+          type: string
+
+    AiMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+        content:
+          type: string

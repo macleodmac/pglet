@@ -1,0 +1,35 @@
+# Go
+pglet
+pglet-stripped
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/storybook-static/
+frontend/tsconfig.tsbuildinfo
+frontend/debug-storybook.log
+
+# Embedded frontend build output
+static/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.pdf
+*.csv
+*.png
+!frontend/public/icon.png
+!frontend/src/assets/icon.png
