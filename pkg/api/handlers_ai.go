@@ -9,7 +9,7 @@ import (
 func (s *Server) AiGenerate(w http.ResponseWriter, r *http.Request) {
 	var req AiGenerateRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -22,7 +22,7 @@ func (s *Server) AiGenerate(w http.ResponseWriter, r *http.Request) {
 
 	sql, explanation, err := s.svc.GenerateSQL(r.Context(), req.Prompt, history)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 
@@ -32,7 +32,7 @@ func (s *Server) AiGenerate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) AiSuggestions(w http.ResponseWriter, r *http.Request) {
 	suggestions, err := s.svc.AISuggestions(r.Context())
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, AiSuggestionsResponse{Suggestions: suggestions})
@@ -41,13 +41,13 @@ func (s *Server) AiSuggestions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) AiTabName(w http.ResponseWriter, r *http.Request) {
 	var req AiTabNameRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	name, err := s.svc.AITabName(r.Context(), req.Sql)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, AiTabNameResponse{Name: name})

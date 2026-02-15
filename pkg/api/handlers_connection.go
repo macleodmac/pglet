@@ -10,13 +10,13 @@ import (
 func (s *Server) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	info, err := s.svc.Connect(req.Url)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -35,17 +35,17 @@ func (s *Server) Disconnect(w http.ResponseWriter, r *http.Request) {
 func (s *Server) SwitchDatabase(w http.ResponseWriter, r *http.Request) {
 	var req SwitchDBRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	info, err := s.svc.SwitchDatabase(req.Database)
 	if errors.Is(err, service.ErrNotConnected) {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -63,7 +63,7 @@ func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, ConnectionInfo{
@@ -79,7 +79,7 @@ func (s *Server) ListDatabases(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, service.ErrNotConnected) {
 			status = http.StatusBadRequest
 		}
-		writeJSON(w, status, ErrorResponse{Error: err.Error()})
+		writeErr(w, status, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, dbs)

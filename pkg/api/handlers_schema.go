@@ -13,7 +13,7 @@ import (
 func (s *Server) ListSchemas(w http.ResponseWriter, r *http.Request) {
 	schemas, err := s.svc.Schemas()
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, schemas)
@@ -22,7 +22,7 @@ func (s *Server) ListSchemas(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ListObjects(w http.ResponseWriter, r *http.Request) {
 	objects, err := s.svc.Objects()
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 
@@ -54,7 +54,7 @@ func toSchemaObjects(objs []client.SchemaObject) []SchemaObject {
 func (s *Server) GetTableColumns(w http.ResponseWriter, r *http.Request, table string) {
 	cols, err := s.svc.TableColumns(table)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 
@@ -90,7 +90,7 @@ func (s *Server) GetTableRows(w http.ResponseWriter, r *http.Request, table stri
 
 	result, total, err := s.svc.TableRows(r.Context(), table, limit, offset, sortCol, sortOrd)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 
@@ -104,7 +104,7 @@ func (s *Server) GetTableRows(w http.ResponseWriter, r *http.Request, table stri
 func (s *Server) GetTableInfo(w http.ResponseWriter, r *http.Request, table string) {
 	info, err := s.svc.TableInfo(table)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, TableInfo{
@@ -116,7 +116,7 @@ func (s *Server) GetTableInfo(w http.ResponseWriter, r *http.Request, table stri
 func (s *Server) GetTableIndexes(w http.ResponseWriter, r *http.Request, table string) {
 	indexes, err := s.svc.TableIndexes(table)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	result := make([]TableIndex, len(indexes))
@@ -132,7 +132,7 @@ func (s *Server) GetTableIndexes(w http.ResponseWriter, r *http.Request, table s
 func (s *Server) GetTableConstraints(w http.ResponseWriter, r *http.Request, table string) {
 	constraints, err := s.svc.TableConstraints(table)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	result := make([]TableConstraint, len(constraints))
@@ -149,9 +149,9 @@ func (s *Server) GetFunctionDefinition(w http.ResponseWriter, r *http.Request, f
 	fd, err := s.svc.FunctionDefinition(schema, name)
 	if err != nil {
 		if errors.Is(err, service.ErrNotConnected) {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			writeErr(w, http.StatusBadRequest, err)
 		} else {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "function not found"})
+			writeErrMsg(w, http.StatusNotFound, "function not found")
 		}
 		return
 	}
@@ -173,7 +173,7 @@ func splitQualifiedName(name string) (string, string) {
 func (s *Server) GetTablesStats(w http.ResponseWriter, r *http.Request) {
 	result, err := s.svc.TablesStats()
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toQueryResult(result))
@@ -182,7 +182,7 @@ func (s *Server) GetTablesStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetActivity(w http.ResponseWriter, r *http.Request) {
 	activities, err := s.svc.Activity()
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	result := make([]Activity, len(activities))
@@ -200,7 +200,7 @@ func (s *Server) GetActivity(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetServerSettings(w http.ResponseWriter, r *http.Request) {
 	result, err := s.svc.ServerSettings()
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toQueryResult(result))

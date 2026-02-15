@@ -1,0 +1,50 @@
+ignoreGeneratedHeader = true
+severity = "warning"
+confidence = 0.8
+
+# Style & naming
+[rule.blank-imports]
+[rule.context-as-argument]
+[rule.context-keys-type]
+[rule.dot-imports]
+[rule.error-naming]
+[rule.error-return]
+[rule.error-strings]
+[rule.errorf]
+[rule.increment-decrement]
+[rule.receiver-naming]
+[rule.time-naming]
+[rule.var-declaration]
+[rule.var-naming]
+  arguments = [[], [], [{ skipPackageNameChecks = true }]]
+
+# Control flow
+[rule.empty-block]
+[rule.indent-error-flow]
+[rule.superfluous-else]
+[rule.unreachable-code]
+[rule.unconditional-recursion]
+[rule.identical-branches]
+
+# Bug prevention
+[rule.range]
+[rule.range-val-in-closure]
+[rule.range-val-address]
+[rule.redefines-builtin-id]
+[rule.waitgroup-by-value]
+[rule.atomic]
+[rule.call-to-gc]
+[rule.constant-logical-expr]
+[rule.defer]
+[rule.string-of-int]
+[rule.modifies-value-receiver]
+[rule.early-return]
+[rule.bool-literal-in-expr]
+[rule.duplicated-imports]
+[rule.unnecessary-stmt]
+[rule.useless-break]
+
+# Disabled: exported — too noisy for an internal app
+# Disabled: unexported-return — not useful here
+# Disabled: unused-parameter — handler signatures are dictated by ServerInterface
+# Disabled: package-comments — not useful here

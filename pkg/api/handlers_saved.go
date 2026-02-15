@@ -11,9 +11,9 @@ func (s *Server) ListSavedQueries(w http.ResponseWriter, r *http.Request, params
 	if params.Database != nil {
 		database = *params.Database
 	}
-	queries, err := s.svc.ListSavedQueries(r.Context(), database)
+	queries, err := s.svc.ListSavedQueries(database)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -25,9 +25,9 @@ func (s *Server) ListSavedQueries(w http.ResponseWriter, r *http.Request, params
 }
 
 func (s *Server) GetSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
-	q, err := s.svc.GetSavedQuery(r.Context(), id)
+	q, err := s.svc.GetSavedQuery(id)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "query not found"})
+		writeErrMsg(w, http.StatusNotFound, "query not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, repoToSavedQuery(*q))
@@ -36,7 +36,7 @@ func (s *Server) GetSavedQuery(w http.ResponseWriter, r *http.Request, id string
 func (s *Server) CreateSavedQuery(w http.ResponseWriter, r *http.Request) {
 	var req SavedQueryInput
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	sq := repository.SavedQuery{Title: req.Title, SQL: req.Sql}
@@ -50,9 +50,9 @@ func (s *Server) CreateSavedQuery(w http.ResponseWriter, r *http.Request) {
 		sq.Tags = *req.Tags
 	}
 
-	created, err := s.svc.CreateSavedQuery(r.Context(), sq)
+	created, err := s.svc.CreateSavedQuery(sq)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, repoToSavedQuery(*created))
@@ -61,7 +61,7 @@ func (s *Server) CreateSavedQuery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) UpdateSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
 	var req SavedQueryInput
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	sq := repository.SavedQuery{ID: id, Title: req.Title, SQL: req.Sql}
@@ -75,8 +75,8 @@ func (s *Server) UpdateSavedQuery(w http.ResponseWriter, r *http.Request, id str
 		sq.Tags = *req.Tags
 	}
 
-	if err := s.svc.UpdateSavedQuery(r.Context(), sq); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := s.svc.UpdateSavedQuery(sq); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	success := true
@@ -84,8 +84,8 @@ func (s *Server) UpdateSavedQuery(w http.ResponseWriter, r *http.Request, id str
 }
 
 func (s *Server) DeleteSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
-	if err := s.svc.DeleteSavedQuery(r.Context(), id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := s.svc.DeleteSavedQuery(id); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	success := true

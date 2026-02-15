@@ -225,7 +225,7 @@ func main() {
 	slog.Debug("repository opened", "path", repoPath, "elapsed", time.Since(start))
 
 	// Import shared queries from .pglet/queries/
-	if err := repo.ImportSharedQueries(context.Background(), repoDir); err != nil {
+	if err := repo.ImportSharedQueries(repoDir); err != nil {
 		slog.Warn("failed to import shared queries", "err", err)
 	}
 

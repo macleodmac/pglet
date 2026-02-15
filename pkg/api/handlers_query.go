@@ -10,7 +10,7 @@ import (
 func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -27,7 +27,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 
@@ -41,13 +41,13 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ExplainQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	result, err := s.svc.ExplainQuery(r.Context(), req.Query)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toQueryResult(result))
@@ -56,13 +56,13 @@ func (s *Server) ExplainQuery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) AnalyzeQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	result, err := s.svc.AnalyzeQuery(r.Context(), req.Query)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toQueryResult(result))
@@ -71,7 +71,7 @@ func (s *Server) AnalyzeQuery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) CancelQuery(w http.ResponseWriter, r *http.Request) {
 	var req CancelRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 

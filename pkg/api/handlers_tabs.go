@@ -3,9 +3,9 @@ package api
 import "net/http"
 
 func (s *Server) GetTabState(w http.ResponseWriter, r *http.Request) {
-	data, err := s.svc.GetTabState(r.Context())
+	data, err := s.svc.GetTabState()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, TabState{Data: &data})
@@ -14,15 +14,15 @@ func (s *Server) GetTabState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) SaveTabState(w http.ResponseWriter, r *http.Request) {
 	var req TabState
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	data := ""
 	if req.Data != nil {
 		data = *req.Data
 	}
-	if err := s.svc.SaveTabState(r.Context(), data); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := s.svc.SaveTabState(data); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	success := true

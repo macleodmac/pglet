@@ -10,13 +10,13 @@ import (
 func (s *Server) ExportQuery(w http.ResponseWriter, r *http.Request) {
 	var req ExportRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	result, err := s.svc.ExportQuery(r.Context(), req.Query)
 	if err != nil {
-		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 
@@ -63,6 +63,6 @@ func (s *Server) ExportQuery(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(records)
 
 	default:
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "unsupported format, use csv or json"})
+		writeErrMsg(w, http.StatusBadRequest, "unsupported format, use csv or json")
 	}
 }

@@ -35,7 +35,7 @@ func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.Qu
 	if err != nil {
 		entry.Error = err.Error()
 		if s.Repo != nil {
-			s.Repo.AddHistoryEntry(ctx, entry)
+			s.Repo.AddHistoryEntry(entry)
 		}
 		return nil, &QueryError{Err: err}
 	}
@@ -43,7 +43,7 @@ func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.Qu
 	entry.DurationMs = result.DurationMs
 	entry.RowCount = result.RowCount
 	if s.Repo != nil {
-		s.Repo.AddHistoryEntry(ctx, entry)
+		s.Repo.AddHistoryEntry(entry)
 	}
 
 	return result, nil

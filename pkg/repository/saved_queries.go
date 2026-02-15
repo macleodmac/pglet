@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -34,7 +33,7 @@ func nowUTC() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05Z")
 }
 
-func (r *Repository) ListSavedQueries(_ context.Context, database string) ([]SavedQuery, error) {
+func (r *Repository) ListSavedQueries(database string) ([]SavedQuery, error) {
 	var result []SavedQuery
 	err := r.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSavedQueries)
@@ -61,7 +60,7 @@ func (r *Repository) ListSavedQueries(_ context.Context, database string) ([]Sav
 	return result, nil
 }
 
-func (r *Repository) GetSavedQuery(_ context.Context, id string) (*SavedQuery, error) {
+func (r *Repository) GetSavedQuery(id string) (*SavedQuery, error) {
 	var q SavedQuery
 	err := r.db.View(func(tx *bolt.Tx) error {
 		v := tx.Bucket(bucketSavedQueries).Get([]byte(id))
@@ -76,7 +75,7 @@ func (r *Repository) GetSavedQuery(_ context.Context, id string) (*SavedQuery, e
 	return &q, nil
 }
 
-func (r *Repository) CreateSavedQuery(_ context.Context, q SavedQuery) (*SavedQuery, error) {
+func (r *Repository) CreateSavedQuery(q SavedQuery) (*SavedQuery, error) {
 	q.ID = newID()
 	now := nowUTC()
 	q.CreatedAt = now
@@ -95,7 +94,7 @@ func (r *Repository) CreateSavedQuery(_ context.Context, q SavedQuery) (*SavedQu
 	return &q, nil
 }
 
-func (r *Repository) UpdateSavedQuery(_ context.Context, q SavedQuery) error {
+func (r *Repository) UpdateSavedQuery(q SavedQuery) error {
 	return r.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSavedQueries)
 		v := b.Get([]byte(q.ID))
@@ -121,13 +120,13 @@ func (r *Repository) UpdateSavedQuery(_ context.Context, q SavedQuery) error {
 	})
 }
 
-func (r *Repository) DeleteSavedQuery(_ context.Context, id string) error {
+func (r *Repository) DeleteSavedQuery(id string) error {
 	return r.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bucketSavedQueries).Delete([]byte(id))
 	})
 }
 
-func (r *Repository) ListSharedQueries(_ context.Context) ([]SavedQuery, error) {
+func (r *Repository) ListSharedQueries() ([]SavedQuery, error) {
 	var result []SavedQuery
 	err := r.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSavedQueries)
@@ -154,7 +153,7 @@ func (r *Repository) ListSharedQueries(_ context.Context) ([]SavedQuery, error) 
 	return result, nil
 }
 
-func (r *Repository) UpsertSharedQuery(_ context.Context, title, sql, description, database, tags string) error {
+func (r *Repository) UpsertSharedQuery(title, sql, description, database, tags string) error {
 	return r.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSavedQueries)
 

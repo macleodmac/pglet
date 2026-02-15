@@ -1,7 +1,7 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BINARY := pglet
 
-.PHONY: dev dev-frontend dev-backend build clean generate generate-go generate-ts
+.PHONY: dev dev-frontend dev-backend build clean generate generate-go generate-ts lint
 
 dev-frontend:
 	cd frontend && pnpm run dev
@@ -30,6 +30,9 @@ generate-go:
 
 generate-ts:
 	cd frontend && npx @hey-api/openapi-ts -i ../openapi.yaml -o src/api/generated
+
+lint:
+	revive -config revive.toml -exclude pkg/api/openapi.gen.go ./...
 
 deps:
 	cd frontend && pnpm install

@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrNotConnected = errors.New("not connected to database")
-	ErrNoAPIKey     = errors.New("AI API key not configured. Set ANTHROPIC_API_KEY environment variable.")
+	ErrNoAPIKey     = errors.New("AI API key not configured, set ANTHROPIC_API_KEY environment variable")
 )
 
 // Service holds all shared state and provides business logic methods.

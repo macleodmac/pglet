@@ -1,11 +1,9 @@
 package service
 
-import "context"
-
-func (s *Service) GetTabState(ctx context.Context) (string, error) {
-	return s.Repo.GetTabState(ctx)
+func (s *Service) GetTabState() (string, error) {
+	return s.Repo.GetTabState()
 }
 
-func (s *Service) SaveTabState(ctx context.Context, data string) error {
-	return s.Repo.SaveTabState(ctx, data)
+func (s *Service) SaveTabState(data string) error {
+	return s.Repo.SaveTabState(data)
 }

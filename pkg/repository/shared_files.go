@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,8 +8,8 @@ import (
 )
 
 // ExportSharedQueries writes shared queries to .pglet/queries/*.sql files
-func (r *Repository) ExportSharedQueries(ctx context.Context, dir string) error {
-	queries, err := r.ListSharedQueries(ctx)
+func (r *Repository) ExportSharedQueries(dir string) error {
+	queries, err := r.ListSharedQueries()
 	if err != nil {
 		return err
 	}
@@ -52,7 +51,7 @@ func (r *Repository) ExportSharedQueries(ctx context.Context, dir string) error 
 }
 
 // ImportSharedQueries reads .pglet/queries/*.sql files and upserts into the repository
-func (r *Repository) ImportSharedQueries(ctx context.Context, dir string) error {
+func (r *Repository) ImportSharedQueries(dir string) error {
 	queriesDir := filepath.Join(dir, "queries")
 	entries, err := os.ReadDir(queriesDir)
 	if err != nil {
@@ -82,7 +81,7 @@ func (r *Repository) ImportSharedQueries(ctx context.Context, dir string) error 
 			continue
 		}
 
-		if err := r.UpsertSharedQuery(ctx, title, sql, description, database, tags); err != nil {
+		if err := r.UpsertSharedQuery(title, sql, description, database, tags); err != nil {
 			return fmt.Errorf("import %s: %w", entry.Name(), err)
 		}
 	}
@@ -112,9 +111,7 @@ func parseSharedQueryFile(content string) (title, description, database, tags, s
 				}
 			} else if strings.HasPrefix(trimmed, "-- @tags:") {
 				tags = strings.TrimSpace(strings.TrimPrefix(trimmed, "-- @tags:"))
-			} else if strings.HasPrefix(trimmed, "--") {
-				// Other comment, skip
-			} else {
+			} else if !strings.HasPrefix(trimmed, "--") {
 				headerDone = true
 				sqlLines = append(sqlLines, line)
 			}

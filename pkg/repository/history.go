@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -25,7 +24,7 @@ func itob(v uint64) []byte {
 	return b
 }
 
-func (r *Repository) AddHistoryEntry(_ context.Context, e HistoryEntry) error {
+func (r *Repository) AddHistoryEntry(e HistoryEntry) error {
 	e.ExecutedAt = nowUTC()
 	return r.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketHistory)
@@ -42,7 +41,7 @@ func (r *Repository) AddHistoryEntry(_ context.Context, e HistoryEntry) error {
 	})
 }
 
-func (r *Repository) ListHistory(_ context.Context, limit, offset int) ([]HistoryEntry, int, error) {
+func (r *Repository) ListHistory(limit, offset int) ([]HistoryEntry, int, error) {
 	var result []HistoryEntry
 	total := 0
 
@@ -78,7 +77,7 @@ func (r *Repository) ListHistory(_ context.Context, limit, offset int) ([]Histor
 	return result, total, nil
 }
 
-func (r *Repository) ClearHistory(_ context.Context) error {
+func (r *Repository) ClearHistory() error {
 	return r.db.Update(func(tx *bolt.Tx) error {
 		if err := tx.DeleteBucket(bucketHistory); err != nil {
 			return err

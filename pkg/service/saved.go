@@ -1,27 +1,23 @@
 package service
 
-import (
-	"context"
+import "github.com/macleodmac/pglet/pkg/repository"
 
-	"github.com/macleodmac/pglet/pkg/repository"
-)
-
-func (s *Service) ListSavedQueries(ctx context.Context, database string) ([]repository.SavedQuery, error) {
-	return s.Repo.ListSavedQueries(ctx, database)
+func (s *Service) ListSavedQueries(database string) ([]repository.SavedQuery, error) {
+	return s.Repo.ListSavedQueries(database)
 }
 
-func (s *Service) GetSavedQuery(ctx context.Context, id string) (*repository.SavedQuery, error) {
-	return s.Repo.GetSavedQuery(ctx, id)
+func (s *Service) GetSavedQuery(id string) (*repository.SavedQuery, error) {
+	return s.Repo.GetSavedQuery(id)
 }
 
-func (s *Service) CreateSavedQuery(ctx context.Context, sq repository.SavedQuery) (*repository.SavedQuery, error) {
-	return s.Repo.CreateSavedQuery(ctx, sq)
+func (s *Service) CreateSavedQuery(sq repository.SavedQuery) (*repository.SavedQuery, error) {
+	return s.Repo.CreateSavedQuery(sq)
 }
 
-func (s *Service) UpdateSavedQuery(ctx context.Context, sq repository.SavedQuery) error {
-	return s.Repo.UpdateSavedQuery(ctx, sq)
+func (s *Service) UpdateSavedQuery(sq repository.SavedQuery) error {
+	return s.Repo.UpdateSavedQuery(sq)
 }
 
-func (s *Service) DeleteSavedQuery(ctx context.Context, id string) error {
-	return s.Repo.DeleteSavedQuery(ctx, id)
+func (s *Service) DeleteSavedQuery(id string) error {
+	return s.Repo.DeleteSavedQuery(id)
 }

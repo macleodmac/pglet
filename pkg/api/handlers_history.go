@@ -11,9 +11,9 @@ func (s *Server) ListHistory(w http.ResponseWriter, r *http.Request, params List
 		offset = *params.Offset
 	}
 
-	entries, total, err := s.svc.ListHistory(r.Context(), limit, offset)
+	entries, total, err := s.svc.ListHistory(limit, offset)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -29,8 +29,8 @@ func (s *Server) ListHistory(w http.ResponseWriter, r *http.Request, params List
 }
 
 func (s *Server) ClearHistory(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.ClearHistory(r.Context()); err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := s.svc.ClearHistory(); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	success := true
