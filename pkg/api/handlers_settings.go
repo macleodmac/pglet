@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,8 +13,9 @@ func (s *Server) GetSettings(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	if key, ok := settings["ai_api_key"]; ok && len(key) > 8 {
-		settings["ai_api_key"] = key[:4] + "..." + key[len(key)-4:]
+	settings["ai_api_key_set"] = "false"
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		settings["ai_api_key_set"] = "true"
 	}
 	c.JSON(http.StatusOK, settings)
 }
@@ -25,6 +27,9 @@ func (s *Server) UpdateSettings(c *gin.Context) {
 		return
 	}
 	for k, v := range settings {
+		if k == "ai_api_key" || k == "ai_api_key_set" {
+			continue // managed via env var
+		}
 		if err := s.Repo.SetSetting(c.Request.Context(), k, v); err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 			return

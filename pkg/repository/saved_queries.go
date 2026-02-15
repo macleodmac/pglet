@@ -2,10 +2,14 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"sort"
+	"time"
 
-	"zombiezen.com/go/sqlite"
-	"zombiezen.com/go/sqlite/sqlitex"
+	bolt "go.etcd.io/bbolt"
 )
 
 type SavedQuery struct {
@@ -20,185 +24,187 @@ type SavedQuery struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
-func scanSavedQuery(stmt *sqlite.Stmt) SavedQuery {
-	return SavedQuery{
-		ID:          stmt.GetText("id"),
-		Title:       stmt.GetText("title"),
-		Description: stmt.GetText("description"),
-		SQL:         stmt.GetText("sql"),
-		Database:    stmt.GetText("database"),
-		Tags:        stmt.GetText("tags"),
-		Shared:      stmt.GetBool("shared"),
-		CreatedAt:   stmt.GetText("created_at"),
-		UpdatedAt:   stmt.GetText("updated_at"),
-	}
+func newID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
-func (r *Repository) ListSavedQueries(ctx context.Context, database string) ([]SavedQuery, error) {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer r.put(conn)
+func nowUTC() string {
+	return time.Now().UTC().Format("2006-01-02T15:04:05Z")
+}
 
-	var query string
-	var args []any
-	if database != "" {
-		query = "SELECT id, title, description, sql, database, tags, shared, created_at, updated_at FROM saved_queries WHERE database = ? OR database = '' ORDER BY updated_at DESC"
-		args = []any{database}
-	} else {
-		query = "SELECT id, title, description, sql, database, tags, shared, created_at, updated_at FROM saved_queries ORDER BY updated_at DESC"
-	}
-
+func (r *Repository) ListSavedQueries(_ context.Context, database string) ([]SavedQuery, error) {
 	var result []SavedQuery
-	err = sqlitex.Execute(conn, query, &sqlitex.ExecOptions{
-		Args: args,
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			result = append(result, scanSavedQuery(stmt))
+	err := r.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSavedQueries)
+		return b.ForEach(func(k, v []byte) error {
+			var q SavedQuery
+			if err := json.Unmarshal(v, &q); err != nil {
+				return nil // skip corrupt entries
+			}
+			if database == "" || q.Database == database || q.Database == "" {
+				result = append(result, q)
+			}
 			return nil
-		},
+		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list saved queries: %w", err)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].UpdatedAt > result[j].UpdatedAt
+	})
 	if result == nil {
 		result = []SavedQuery{}
 	}
 	return result, nil
 }
 
-func (r *Repository) GetSavedQuery(ctx context.Context, id string) (*SavedQuery, error) {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer r.put(conn)
-
-	var q *SavedQuery
-	err = sqlitex.Execute(conn, "SELECT id, title, description, sql, database, tags, shared, created_at, updated_at FROM saved_queries WHERE id = ?", &sqlitex.ExecOptions{
-		Args: []any{id},
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			sq := scanSavedQuery(stmt)
-			q = &sq
-			return nil
-		},
+func (r *Repository) GetSavedQuery(_ context.Context, id string) (*SavedQuery, error) {
+	var q SavedQuery
+	err := r.db.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bucketSavedQueries).Get([]byte(id))
+		if v == nil {
+			return fmt.Errorf("saved query not found: %s", id)
+		}
+		return json.Unmarshal(v, &q)
 	})
 	if err != nil {
 		return nil, err
 	}
-	if q == nil {
-		return nil, fmt.Errorf("saved query not found: %s", id)
-	}
-	return q, nil
+	return &q, nil
 }
 
-func (r *Repository) CreateSavedQuery(ctx context.Context, q SavedQuery) (*SavedQuery, error) {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer r.put(conn)
+func (r *Repository) CreateSavedQuery(_ context.Context, q SavedQuery) (*SavedQuery, error) {
+	q.ID = newID()
+	now := nowUTC()
+	q.CreatedAt = now
+	q.UpdatedAt = now
 
-	err = sqlitex.Execute(conn,
-		`INSERT INTO saved_queries (title, description, sql, database, tags)
-		VALUES (?, ?, ?, ?, ?) RETURNING id, created_at, updated_at`,
-		&sqlitex.ExecOptions{
-			Args: []any{q.Title, q.Description, q.SQL, q.Database, q.Tags},
-			ResultFunc: func(stmt *sqlite.Stmt) error {
-				q.ID = stmt.GetText("id")
-				q.CreatedAt = stmt.GetText("created_at")
-				q.UpdatedAt = stmt.GetText("updated_at")
-				return nil
-			},
-		})
+	err := r.db.Update(func(tx *bolt.Tx) error {
+		data, err := json.Marshal(q)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(bucketSavedQueries).Put([]byte(q.ID), data)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create saved query: %w", err)
 	}
 	return &q, nil
 }
 
-func (r *Repository) UpdateSavedQuery(ctx context.Context, q SavedQuery) error {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer r.put(conn)
+func (r *Repository) UpdateSavedQuery(_ context.Context, q SavedQuery) error {
+	return r.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSavedQueries)
+		v := b.Get([]byte(q.ID))
+		if v == nil {
+			return fmt.Errorf("saved query not found: %s", q.ID)
+		}
+		var existing SavedQuery
+		if err := json.Unmarshal(v, &existing); err != nil {
+			return err
+		}
+		existing.Title = q.Title
+		existing.Description = q.Description
+		existing.SQL = q.SQL
+		existing.Database = q.Database
+		existing.Tags = q.Tags
+		existing.UpdatedAt = nowUTC()
 
-	return sqlitex.Execute(conn,
-		`UPDATE saved_queries SET title = ?, description = ?, sql = ?, database = ?, tags = ?,
-		updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
-		&sqlitex.ExecOptions{
-			Args: []any{q.Title, q.Description, q.SQL, q.Database, q.Tags, q.ID},
-		})
-}
-
-func (r *Repository) DeleteSavedQuery(ctx context.Context, id string) error {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer r.put(conn)
-
-	return sqlitex.Execute(conn, "DELETE FROM saved_queries WHERE id = ?", &sqlitex.ExecOptions{
-		Args: []any{id},
+		data, err := json.Marshal(existing)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(q.ID), data)
 	})
 }
 
-func (r *Repository) ListSharedQueries(ctx context.Context) ([]SavedQuery, error) {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer r.put(conn)
+func (r *Repository) DeleteSavedQuery(_ context.Context, id string) error {
+	return r.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketSavedQueries).Delete([]byte(id))
+	})
+}
 
+func (r *Repository) ListSharedQueries(_ context.Context) ([]SavedQuery, error) {
 	var result []SavedQuery
-	err = sqlitex.Execute(conn, "SELECT id, title, description, sql, database, tags, shared, created_at, updated_at FROM saved_queries WHERE shared = 1 ORDER BY title", &sqlitex.ExecOptions{
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			result = append(result, scanSavedQuery(stmt))
+	err := r.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSavedQueries)
+		return b.ForEach(func(k, v []byte) error {
+			var q SavedQuery
+			if err := json.Unmarshal(v, &q); err != nil {
+				return nil
+			}
+			if q.Shared {
+				result = append(result, q)
+			}
 			return nil
-		},
+		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list shared queries: %w", err)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Title < result[j].Title
+	})
 	if result == nil {
 		result = []SavedQuery{}
 	}
 	return result, nil
 }
 
-func (r *Repository) UpsertSharedQuery(ctx context.Context, title, sql, description, database, tags string) error {
-	conn, err := r.conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer r.put(conn)
+func (r *Repository) UpsertSharedQuery(_ context.Context, title, sql, description, database, tags string) error {
+	return r.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketSavedQueries)
 
-	// Check if exists by title
-	var existingID string
-	err = sqlitex.Execute(conn, "SELECT id FROM saved_queries WHERE title = ? AND shared = 1", &sqlitex.ExecOptions{
-		Args: []any{title},
-		ResultFunc: func(stmt *sqlite.Stmt) error {
-			existingID = stmt.GetText("id")
+		// Find existing by title + shared
+		var existingID string
+		b.ForEach(func(k, v []byte) error {
+			var q SavedQuery
+			if err := json.Unmarshal(v, &q); err != nil {
+				return nil
+			}
+			if q.Shared && q.Title == title {
+				existingID = q.ID
+			}
 			return nil
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	if existingID != "" {
-		return sqlitex.Execute(conn,
-			`UPDATE saved_queries SET sql = ?, description = ?, database = ?, tags = ?,
-			updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
-			&sqlitex.ExecOptions{
-				Args: []any{sql, description, database, tags, existingID},
-			})
-	}
-
-	return sqlitex.Execute(conn,
-		`INSERT INTO saved_queries (title, description, sql, database, tags, shared) VALUES (?, ?, ?, ?, ?, 1)`,
-		&sqlitex.ExecOptions{
-			Args: []any{title, description, sql, database, tags},
 		})
+
+		now := nowUTC()
+		if existingID != "" {
+			v := b.Get([]byte(existingID))
+			var q SavedQuery
+			if err := json.Unmarshal(v, &q); err != nil {
+				return err
+			}
+			q.SQL = sql
+			q.Description = description
+			q.Database = database
+			q.Tags = tags
+			q.UpdatedAt = now
+			data, err := json.Marshal(q)
+			if err != nil {
+				return err
+			}
+			return b.Put([]byte(existingID), data)
+		}
+
+		q := SavedQuery{
+			ID:          newID(),
+			Title:       title,
+			Description: description,
+			SQL:         sql,
+			Database:    database,
+			Tags:        tags,
+			Shared:      true,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		data, err := json.Marshal(q)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(q.ID), data)
+	})
 }

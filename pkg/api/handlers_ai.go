@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,9 +16,9 @@ func (s *Server) AiGenerate(c *gin.Context) {
 		return
 	}
 
-	apiKey, _ := s.Repo.GetSetting(c.Request.Context(), "ai_api_key")
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "AI API key not configured. Set it in Settings."})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "AI API key not configured. Set ANTHROPIC_API_KEY environment variable."})
 		return
 	}
 
@@ -54,9 +55,9 @@ func (s *Server) AiGenerate(c *gin.Context) {
 }
 
 func (s *Server) AiSuggestions(c *gin.Context) {
-	apiKey, _ := s.Repo.GetSetting(c.Request.Context(), "ai_api_key")
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "AI API key not configured. Set it in Settings."})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "AI API key not configured. Set ANTHROPIC_API_KEY environment variable."})
 		return
 	}
 
@@ -94,7 +95,7 @@ func (s *Server) AiTabName(c *gin.Context) {
 		return
 	}
 
-	apiKey, _ := s.Repo.GetSetting(c.Request.Context(), "ai_api_key")
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		// No API key — fall back to SQL heuristic
 		c.JSON(http.StatusOK, AiTabNameResponse{Name: heuristicTabName(req.Sql)})
