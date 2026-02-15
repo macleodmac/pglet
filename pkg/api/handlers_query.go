@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jm/pglet/pkg/repository"
+	"github.com/macleodmac/pglet/pkg/repository"
 )
 
 var (

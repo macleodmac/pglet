@@ -575,6 +575,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/AiGenerateResponse'
 
+  /api/ai/tab-name:
+    post:
+      operationId: aiTabName
+      summary: Generate a short tab name from SQL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiTabNameRequest'
+      responses:
+        '200':
+          description: Generated tab name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiTabNameResponse'
+
 components:
   schemas:
     ErrorResponse:
@@ -964,4 +982,18 @@ components:
         role:
           type: string
         content:
+          type: string
+
+    AiTabNameRequest:
+      type: object
+      required: [sql]
+      properties:
+        sql:
+          type: string
+
+    AiTabNameResponse:
+      type: object
+      required: [name]
+      properties:
+        name:
           type: string

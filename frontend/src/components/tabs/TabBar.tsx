@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useTabStore } from '../../stores/tabs'
 import { SettingsDialog } from '../ai/SettingsDialog'
 import { Icon } from '../ui/Icon'
@@ -11,10 +11,18 @@ export function TabBar() {
   const addQueryTab = useTabStore((s) => s.addQueryTab)
   const addAiTab = useTabStore((s) => s.addAiTab)
   const pinTab = useTabStore((s) => s.pinTab)
+  const renameTab = useTabStore((s) => s.renameTab)
   const reorderTabs = useTabStore((s) => s.reorderTabs)
   const [showSettings, setShowSettings] = useState(false)
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const editInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editingTabId) editInputRef.current?.select()
+  }, [editingTabId])
 
   return (
     <>
@@ -51,7 +59,14 @@ export function TabBar() {
                 }}
                 onClick={() => setActiveTab(tab.id)}
                 onDoubleClick={() => {
-                  if (tab.preview) pinTab(tab.id)
+                  if (tab.preview) {
+                    pinTab(tab.id)
+                    return
+                  }
+                  if (tab.type === 'query' || tab.type === 'ai') {
+                    setEditingTabId(tab.id)
+                    setEditValue(tab.title)
+                  }
                 }}
                 className={`group relative flex h-8 max-w-48 items-center gap-1 border-r border-surface-200 px-3 text-xs dark:border-surface-800 ${
                   active
@@ -68,7 +83,30 @@ export function TabBar() {
                 ) : (
                   <Icon name="bolt" className="h-3 w-3 shrink-0 opacity-50" />
                 )}
-                <span className={`truncate ${tab.preview ? 'italic' : ''}`}>{tab.title}</span>
+                {editingTabId === tab.id ? (
+                  <input
+                    ref={editInputRef}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={() => {
+                      const trimmed = editValue.trim()
+                      if (trimmed && trimmed !== tab.title) renameTab(tab.id, trimmed)
+                      setEditingTabId(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur()
+                      } else if (e.key === 'Escape') {
+                        setEditingTabId(null)
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    className="w-full min-w-0 bg-transparent outline-none ring-1 ring-accent-500 rounded px-0.5 -mx-0.5"
+                  />
+                ) : (
+                  <span className={`truncate ${tab.preview ? 'italic' : ''}`}>{tab.title}</span>
+                )}
                 <button
                   type="button"
                   onClick={(e) => {

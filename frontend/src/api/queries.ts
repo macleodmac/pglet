@@ -28,6 +28,7 @@ import {
   getSettings,
   updateSettings,
   aiGenerate,
+  aiTabName,
 } from './client'
 import type { SavedQueryInput } from './generated'
 
@@ -274,4 +275,15 @@ export function useAiGenerate() {
       messages?: Array<{ role: string; content: string }>
     }) => unwrap(await aiGenerate({ body: params })),
   })
+}
+
+/** Fire-and-forget: generate a short tab name from SQL. Returns the name or null on failure. */
+export async function autoNameTab(sql: string): Promise<string | null> {
+  try {
+    const res = await aiTabName({ body: { sql } })
+    const name = (res.data as { name?: string })?.name
+    return name || null
+  } catch {
+    return null
+  }
 }

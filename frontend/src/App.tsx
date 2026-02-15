@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useConnectionStore } from './stores/connection'
+import { useTabStore } from './stores/tabs'
 import { ConnectionDialog } from './components/connection/ConnectionDialog'
 import { AppShell } from './components/layout/AppShell'
 import { getConnectionInfo } from './api/client'
@@ -8,6 +9,7 @@ import icon from './assets/icon.png'
 export default function App() {
   const connected = useConnectionStore((s) => s.connected)
   const setConnected = useConnectionStore((s) => s.setConnected)
+  const initTabs = useTabStore((s) => s.initFromServer)
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
@@ -15,9 +17,10 @@ export default function App() {
       const info = res.data
       if (info?.host) {
         setConnected(info)
+        return initTabs()
       }
     }).finally(() => setChecking(false))
-  }, [setConnected])
+  }, [setConnected, initTabs])
 
   if (checking) {
     return (

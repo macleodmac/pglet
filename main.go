@@ -12,19 +12,30 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jm/pglet/pkg/api"
-	"github.com/jm/pglet/pkg/client"
-	"github.com/jm/pglet/pkg/repository"
-	"github.com/jm/pglet/static"
+	"github.com/macleodmac/pglet/pkg/api"
+	"github.com/macleodmac/pglet/pkg/client"
+	"github.com/macleodmac/pglet/pkg/repository"
+	"github.com/macleodmac/pglet/static"
 	"github.com/lmittmann/tint"
 )
 
 var version = "dev"
+
+func getVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return version
+}
 
 type Config struct {
 	Host        string
@@ -54,6 +65,12 @@ func parseConfig() Config {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "-h", "--help":
+			printUsage()
+			os.Exit(0)
+		case "-v", "--version":
+			fmt.Println(getVersion())
+			os.Exit(0)
 		case "--host":
 			if i+1 < len(args) {
 				cfg.Host = args[i+1]
@@ -264,7 +281,7 @@ func main() {
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Bind, cfg.Listen)
-	slog.Info("listening", "version", version, "addr", fmt.Sprintf("http://%s", addr), "startup", time.Since(start))
+	slog.Info("listening", "version", getVersion(), "addr", fmt.Sprintf("http://%s", addr), "startup", time.Since(start))
 
 	if !cfg.Dev {
 		go openBrowser(fmt.Sprintf("http://%s", addr))
@@ -291,6 +308,41 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("server stopped")
+}
+
+func printUsage() {
+	fmt.Printf(`pglet %s — A PostgreSQL browser
+
+Usage:
+  pglet [flags]
+
+Examples:
+  pglet                                          # start and connect via UI
+  pglet --url postgres://localhost:5432/mydb      # connect on startup
+  pglet --host localhost --port 5432 --db mydb    # connect with flags
+
+Connection:
+  --url <url>       PostgreSQL connection URL
+  --host <host>     Database host
+  --port <port>     Database port (default: 5432)
+  --user <user>     Database user
+  --pass <pass>     Database password
+  --db <name>       Database name
+  --ssl <mode>      SSL mode (default: disable)
+
+Server:
+  --bind <addr>     Bind address (default: localhost)
+  --listen <port>   Listen port (default: 8081)
+  --prefix <path>   URL prefix (default: /)
+  --open            Open browser on start
+  --store-dir <dir> Data directory (default: ~/.pglet/)
+  --dev             Development mode (CORS, verbose logging)
+  --cors            Enable CORS
+
+Other:
+  -h, --help        Show this help
+  -v, --version     Show version
+`, getVersion())
 }
 
 func openBrowser(url string) {

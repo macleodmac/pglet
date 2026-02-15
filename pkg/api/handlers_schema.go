@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jm/pglet/pkg/client"
+	"github.com/macleodmac/pglet/pkg/client"
 )
 
 func (s *Server) ListSchemas(c *gin.Context) {

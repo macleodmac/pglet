@@ -10,6 +10,7 @@ import { AiChatPanel } from '../ai/AiChatPanel'
 import { useTabStore } from '../../stores/tabs'
 import { useConnectionStore } from '../../stores/connection'
 import { useRunQuery, useExplainQuery, useCancelQuery, useAiGenerate } from '../../api/queries'
+import { autoNameTab } from '../../api/queries'
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from 'react'
 
 const SqlEditor = lazy(() => import('../editor/SqlEditor').then((m) => ({ default: m.SqlEditor })))
@@ -64,6 +65,13 @@ export function TabPanel({ tab }: { tab: Tab }) {
           onSuccess: (data) => {
             setResult(data)
             setIsRunning(false)
+            // Auto-name tab on first successful run (if not manually renamed and not already AI-named)
+            if (!tab.userRenamed && !tab.aiRenamed && !data.error) {
+              updateTab(tab.id, { aiRenamed: true })
+              autoNameTab(query).then((name) => {
+                if (name) updateTab(tab.id, { title: name, aiRenamed: true })
+              })
+            }
           },
           onError: (err) => {
             setResult({
@@ -79,7 +87,7 @@ export function TabPanel({ tab }: { tab: Tab }) {
         },
       )
     },
-    [tab.sql, tab.id, runQuery],
+    [tab.sql, tab.id, tab.userRenamed, tab.aiRenamed, runQuery, updateTab],
   )
 
   const handleExplain = useCallback(() => {

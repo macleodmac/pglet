@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jm/pglet/pkg/repository"
+	"github.com/macleodmac/pglet/pkg/repository"
 )
 
 func (s *Server) ListSavedQueries(c *gin.Context, params ListSavedQueriesParams) {

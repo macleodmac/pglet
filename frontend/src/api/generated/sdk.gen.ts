@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AiGenerateData, AiGenerateResponses, AnalyzeQueryData, AnalyzeQueryResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetSettingsData, GetSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RunQueryData, RunQueryResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses, UpdateSettingsData, UpdateSettingsResponses } from './types.gen';
+import type { AiGenerateData, AiGenerateResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetSettingsData, GetSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RunQueryData, RunQueryResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses, UpdateSettingsData, UpdateSettingsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -248,6 +248,18 @@ export const updateSettings = <ThrowOnError extends boolean = false>(options: Op
  */
 export const aiGenerate = <ThrowOnError extends boolean = false>(options: Options<AiGenerateData, ThrowOnError>) => (options.client ?? client).post<AiGenerateResponses, unknown, ThrowOnError>({
     url: '/api/ai/generate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Generate a short tab name from SQL
+ */
+export const aiTabName = <ThrowOnError extends boolean = false>(options: Options<AiTabNameData, ThrowOnError>) => (options.client ?? client).post<AiTabNameResponses, unknown, ThrowOnError>({
+    url: '/api/ai/tab-name',
     ...options,
     headers: {
         'Content-Type': 'application/json',

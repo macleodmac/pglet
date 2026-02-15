@@ -1,23 +1,48 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback, useLayoutEffect } from 'react'
 import type { Tab } from '../../stores/tabs'
 import { useTabStore } from '../../stores/tabs'
 import { useTableRows, useTableColumns, useTableIndexes, useTableConstraints, useTableInfo } from '../../api/queries'
 import { DataGrid } from './DataGrid'
 import { Pagination } from './Pagination'
 
-const PAGE_SIZE = 100
+const BASE_ROW_HEIGHT = 26
+const MIN_PAGE_SIZE = 10
 
 export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }) {
   const updateTab = useTabStore((s) => s.updateTab)
   const activeView = tab.activeView || 'rows'
 
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [pageSize, setPageSize] = useState(MIN_PAGE_SIZE)
+  const [rowHeight, setRowHeight] = useState(BASE_ROW_HEIGHT)
   const [page, setPage] = useState(0)
   const [sortColumn, _setSortColumn] = useState<string>()
   const [sortOrder, _setSortOrder] = useState<'ASC' | 'DESC'>()
 
+  const calcPageSize = useCallback(() => {
+    if (!contentRef.current) return
+    const h = contentRef.current.clientHeight
+    // +1 accounts for the header row which also uses rowHeight
+    const exactRows = h / BASE_ROW_HEIGHT - 1
+    // Round down to nearest multiple of 5
+    const rounded = Math.max(MIN_PAGE_SIZE, Math.floor(exactRows / 5) * 5)
+    setPageSize(rounded)
+    // Divide full height by (rows + header) — rows grow slightly to fill the space
+    setRowHeight(Math.floor(h / (rounded + 1)))
+  }, [])
+
+  useLayoutEffect(() => {
+    calcPageSize()
+    const el = contentRef.current
+    if (!el) return
+    const ro = new ResizeObserver(calcPageSize)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [calcPageSize])
+
   const rowsQuery = useTableRows(tableName, {
-    limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    limit: pageSize,
+    offset: page * pageSize,
     sort_column: sortColumn,
     sort_order: sortOrder,
   })
@@ -41,7 +66,7 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
         <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{tableName}</span>
         {infoQuery.data && (
           <span className="text-xs text-gray-400">
-            ~{infoQuery.data.row_estimate.toLocaleString()} rows · {infoQuery.data.total_size}
+            {infoQuery.data.row_estimate >= 0 && <>~{infoQuery.data.row_estimate.toLocaleString()} rows · </>}{infoQuery.data.total_size}
           </span>
         )}
       </div>
@@ -50,6 +75,7 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
       <div className="flex border-b border-surface-200 dark:border-surface-800">
         {views.map((v) => (
           <button
+            type="button"
             key={v.key}
             onClick={() => updateTab(tab.id, { activeView: v.key })}
             className={`px-4 py-1.5 text-xs font-medium ${
@@ -64,21 +90,15 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
       </div>
 
       {/* Content */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div ref={contentRef} className="min-h-0 flex-1 overflow-auto">
         {activeView === 'rows' && rowsQuery.data && (
-          <>
-            <DataGrid
-              columns={rowsQuery.data.columns}
-              columnTypes={rowsQuery.data.column_types || rowsQuery.data.columns.map(() => '')}
-              rows={rowsQuery.data.rows}
-            />
-            <Pagination
-              page={page}
-              pageSize={PAGE_SIZE}
-              totalCount={rowsQuery.data.total_count}
-              onPageChange={setPage}
-            />
-          </>
+          <DataGrid
+            columns={rowsQuery.data.columns}
+            columnTypes={rowsQuery.data.column_types || rowsQuery.data.columns.map(() => '')}
+            rows={rowsQuery.data.rows}
+            rowHeight={rowHeight}
+            rowOffset={page * pageSize}
+          />
         )}
 
         {activeView === 'structure' && columnsQuery.data && (
@@ -152,6 +172,15 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
           </table>
         )}
       </div>
+
+      {activeView === 'rows' && rowsQuery.data && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalCount={rowsQuery.data.total_count}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   )
 }

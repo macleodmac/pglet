@@ -190,6 +190,14 @@ export type AiMessage = {
     content: string;
 };
 
+export type AiTabNameRequest = {
+    sql: string;
+};
+
+export type AiTabNameResponse = {
+    name: string;
+};
+
 export type ConnectData = {
     body: ConnectRequest;
     path?: never;
@@ -759,3 +767,19 @@ export type AiGenerateResponses = {
 };
 
 export type AiGenerateResponse2 = AiGenerateResponses[keyof AiGenerateResponses];
+
+export type AiTabNameData = {
+    body: AiTabNameRequest;
+    path?: never;
+    query?: never;
+    url: '/api/ai/tab-name';
+};
+
+export type AiTabNameResponses = {
+    /**
+     * Generated tab name
+     */
+    200: AiTabNameResponse;
+};
+
+export type AiTabNameResponse2 = AiTabNameResponses[keyof AiTabNameResponses];

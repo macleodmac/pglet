@@ -13,8 +13,8 @@ frontend/storybook-static/
 frontend/tsconfig.tsbuildinfo
 frontend/debug-storybook.log
 
-# Embedded frontend build output
-static/dist/
+# Embedded frontend build output (committed for go install support)
+# static/dist/
 
 # IDE
 .idea/

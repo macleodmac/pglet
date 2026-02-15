@@ -142,6 +142,27 @@ func (c *Client) complete(ctx context.Context, model, system string, messages []
 	return apiResp.Content[0].Text, nil
 }
 
+// GenerateTabName produces a short (2-4 word) name for a SQL query tab.
+func (c *Client) GenerateTabName(ctx context.Context, sql string) (string, error) {
+	system := `You generate very short tab names for SQL queries in a database browser.
+Rules:
+- Return ONLY the tab name, nothing else
+- 2-4 words maximum
+- Describe what the query does, not the SQL syntax
+- Use title case
+- Examples: "Active Users", "Monthly Revenue", "Order Details", "Schema Sizes"`
+
+	msgs := []Message{{Role: "user", Content: sql}}
+
+	name, err := c.complete(ctx, c.FastModel, system, msgs, 32)
+	if err != nil {
+		return "", err
+	}
+	// Strip any surrounding quotes the model might add
+	name = strings.Trim(strings.TrimSpace(name), "\"'`")
+	return name, nil
+}
+
 // selectTables asks a fast model which tables are relevant to the prompt.
 // Falls back to the full schema on any error.
 func (c *Client) selectTables(ctx context.Context, schema map[string][]Column, prompt string) map[string][]Column {

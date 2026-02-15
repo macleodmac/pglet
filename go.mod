@@ -1,4 +1,4 @@
-module github.com/jm/pglet
+module github.com/macleodmac/pglet
 
 go 1.25.5
 

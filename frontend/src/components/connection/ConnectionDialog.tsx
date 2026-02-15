@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useConnect } from '../../api/queries'
 import { useConnectionStore } from '../../stores/connection'
+import { useTabStore } from '../../stores/tabs'
 
 interface SavedConnection {
   name: string
@@ -68,6 +69,7 @@ export function ConnectionDialog() {
             database: info.database,
             version: info.version,
           })
+          useTabStore.getState().initFromServer()
         },
       })
     },
