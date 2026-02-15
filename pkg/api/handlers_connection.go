@@ -1,112 +1,91 @@
 package api
 
 import (
+	"errors"
 	"net/http"
-	"os"
 
-	"github.com/gin-gonic/gin"
-	"github.com/macleodmac/pglet/pkg/client"
+	"github.com/macleodmac/pglet/pkg/service"
 )
 
-func (s *Server) Connect(c *gin.Context) {
+func (s *Server) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	cl, err := client.New(req.Url)
+	info, err := s.svc.Connect(req.Url)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	s.swapClient(cl)
-	info, err := cl.Info()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, ConnectionInfo{
+	writeJSON(w, http.StatusOK, ConnectionInfo{
 		Host: info.Host, Port: info.Port, User: info.User,
 		Database: info.Database, Version: info.Version,
 	})
 }
 
-func (s *Server) Disconnect(c *gin.Context) {
-	s.swapClient(nil)
+func (s *Server) Disconnect(w http.ResponseWriter, r *http.Request) {
+	s.svc.Disconnect()
 	success := true
-	c.JSON(http.StatusOK, SuccessResponse{Success: &success})
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }
 
-func (s *Server) SwitchDatabase(c *gin.Context) {
+func (s *Server) SwitchDatabase(w http.ResponseWriter, r *http.Request) {
 	var req SwitchDBRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
-		return
-	}
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	newClient, err := cl.SwitchDatabase(req.Database)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+	info, err := s.svc.SwitchDatabase(req.Database)
+	if errors.Is(err, service.ErrNotConnected) {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
-	s.swapClient(newClient)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
 
-	info, err := newClient.Info()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, ConnectionInfo{
+	writeJSON(w, http.StatusOK, ConnectionInfo{
 		Host: info.Host, Port: info.Port, User: info.User,
 		Database: info.Database, Version: info.Version,
 	})
 }
 
-func (s *Server) GetConnectionInfo(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		connected := false
-		c.JSON(http.StatusOK, ConnectionInfo{Connected: &connected})
+func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
+	info, connected, err := s.svc.ConnectionInfo()
+	if !connected {
+		c := false
+		writeJSON(w, http.StatusOK, ConnectionInfo{Connected: &c})
 		return
 	}
-	info, err := cl.Info()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, ConnectionInfo{
+	writeJSON(w, http.StatusOK, ConnectionInfo{
 		Host: info.Host, Port: info.Port, User: info.User,
 		Database: info.Database, Version: info.Version,
 	})
 }
 
-func (s *Server) ListDatabases(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	dbs, err := cl.Databases()
+func (s *Server) ListDatabases(w http.ResponseWriter, r *http.Request) {
+	dbs, err := s.svc.Databases()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrNotConnected) {
+			status = http.StatusBadRequest
+		}
+		writeJSON(w, status, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, dbs)
+	writeJSON(w, http.StatusOK, dbs)
 }
 
-// AppVersion is set from main at startup.
-var AppVersion = "dev"
-
-func (s *Server) GetAppInfo(c *gin.Context) {
-	v := AppVersion
-	aiEnabled := os.Getenv("ANTHROPIC_API_KEY") != ""
-	c.JSON(http.StatusOK, AppInfo{Version: &v, AiEnabled: &aiEnabled})
+func (s *Server) GetAppInfo(w http.ResponseWriter, r *http.Request) {
+	v, aiEnabled := s.svc.AppInfo()
+	writeJSON(w, http.StatusOK, AppInfo{Version: &v, AiEnabled: &aiEnabled})
 }

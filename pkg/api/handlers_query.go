@@ -1,131 +1,81 @@
 package api
 
 import (
-	"context"
+	"errors"
 	"net/http"
-	"sync"
 
-	"github.com/gin-gonic/gin"
-	"github.com/macleodmac/pglet/pkg/repository"
+	"github.com/macleodmac/pglet/pkg/service"
 )
 
-var (
-	runningQueries   = map[string]context.CancelFunc{}
-	runningQueriesMu sync.Mutex
-)
-
-func (s *Server) RunQuery(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-
+func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	ctx, cancel := context.WithCancel(c.Request.Context())
-
-	runningQueriesMu.Lock()
-	if prev, ok := runningQueries[req.TabId]; ok {
-		prev()
-	}
-	runningQueries[req.TabId] = cancel
-	runningQueriesMu.Unlock()
-
-	defer func() {
-		runningQueriesMu.Lock()
-		delete(runningQueries, req.TabId)
-		runningQueriesMu.Unlock()
-		cancel()
-	}()
-
-	result, err := cl.QueryWithContext(ctx, req.Query)
-
-	entry := repository.HistoryEntry{SQL: req.Query, Database: cl.Database()}
+	result, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query)
 	if err != nil {
-		entry.Error = err.Error()
-		if s.Repo != nil {
-			s.Repo.AddHistoryEntry(c.Request.Context(), entry)
+		var qe *service.QueryError
+		if errors.As(err, &qe) {
+			// Query execution error — return inside 200 OK per API contract
+			errMsg := qe.Error()
+			writeJSON(w, http.StatusOK, QueryResult{
+				Columns: []string{}, ColumnTypes: []string{},
+				Rows: [][]CellValue{}, RowCount: 0, DurationMs: 0,
+				Error: &errMsg,
+			})
+			return
 		}
-		errMsg := err.Error()
-		c.JSON(http.StatusOK, QueryResult{
-			Columns: []string{}, ColumnTypes: []string{},
-			Rows: [][]CellValue{}, RowCount: 0, DurationMs: 0,
-			Error: &errMsg,
-		})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	entry.DurationMs = result.DurationMs
-	entry.RowCount = result.RowCount
-	if s.Repo != nil {
-		s.Repo.AddHistoryEntry(c.Request.Context(), entry)
-	}
-
-	c.JSON(http.StatusOK, QueryResult{
+	writeJSON(w, http.StatusOK, QueryResult{
 		Columns: result.Columns, ColumnTypes: result.ColumnTypes,
 		Rows: toNullableRows(result.Rows), RowCount: result.RowCount,
 		DurationMs: result.DurationMs,
 	})
 }
 
-func (s *Server) ExplainQuery(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
+func (s *Server) ExplainQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	result, err := cl.QueryWithContext(c.Request.Context(), "EXPLAIN "+req.Query)
+	result, err := s.svc.ExplainQuery(r.Context(), req.Query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toQueryResult(result))
+	writeJSON(w, http.StatusOK, toQueryResult(result))
 }
 
-func (s *Server) AnalyzeQuery(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
+func (s *Server) AnalyzeQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	result, err := cl.QueryWithContext(c.Request.Context(), "EXPLAIN ANALYZE "+req.Query)
+	result, err := s.svc.AnalyzeQuery(r.Context(), req.Query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toQueryResult(result))
+	writeJSON(w, http.StatusOK, toQueryResult(result))
 }
 
-func (s *Server) CancelQuery(c *gin.Context) {
+func (s *Server) CancelQuery(w http.ResponseWriter, r *http.Request) {
 	var req CancelRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	runningQueriesMu.Lock()
-	if cancel, ok := runningQueries[req.TabId]; ok {
-		cancel()
-	}
-	runningQueriesMu.Unlock()
-
+	s.svc.CancelQuery(req.TabId)
 	success := true
-	c.JSON(http.StatusOK, SuccessResponse{Success: &success})
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }

@@ -17,12 +17,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/lmittmann/tint"
 	"github.com/macleodmac/pglet/pkg/api"
 	"github.com/macleodmac/pglet/pkg/client"
 	"github.com/macleodmac/pglet/pkg/repository"
+	"github.com/macleodmac/pglet/pkg/service"
 	"github.com/macleodmac/pglet/static"
-	"github.com/lmittmann/tint"
+	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
 )
 
 var version = "dev"
@@ -211,8 +212,6 @@ func main() {
 
 	cfg := parseConfig()
 
-	api.AppVersion = getVersion()
-
 	// Setup repository
 	repoDir := resolveRepoDir(cfg)
 	repoPath := filepath.Join(repoDir, "pglet.db")
@@ -230,10 +229,9 @@ func main() {
 		slog.Warn("failed to import shared queries", "err", err)
 	}
 
-	// Setup server
-	server := &api.Server{
-		Repo: repo,
-	}
+	// Setup service and server
+	svc := service.New(repo, getVersion())
+	server := api.NewServer(svc)
 
 	// Auto-connect if URL provided
 	connURL := buildConnectionURL(cfg)
@@ -242,44 +240,45 @@ func main() {
 		if err != nil {
 			slog.Warn("failed to connect", "err", err)
 		} else {
-			server.SetClient(cl)
+			svc.SetClient(cl)
 			slog.Debug("connected", "database", cl.Database(), "elapsed", time.Since(start))
 		}
 	}
 
-	// Setup Gin
-	if !cfg.Dev {
-		gin.SetMode(gin.ReleaseMode)
+	// Load OpenAPI spec for request validation
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		slog.Error("failed to load OpenAPI spec", "err", err)
+		os.Exit(1)
 	}
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.Use(api.LoggingMiddleware())
+	swagger.Servers = nil // clear servers so validator doesn't check host
 
+	// Build handler with validation middleware
+	baseURL := cfg.Prefix
+	if baseURL == "/" {
+		baseURL = ""
+	}
+	var handler http.Handler
+	handler = api.HandlerWithOptions(server, api.StdHTTPServerOptions{
+		BaseURL:     baseURL,
+		Middlewares: []api.MiddlewareFunc{nethttpmiddleware.OapiRequestValidator(swagger)},
+	})
+
+	// Apply middleware
+	handler = api.LoggingMiddleware(handler)
+	handler = api.RecoveryMiddleware(handler)
 	if cfg.Cors || cfg.Dev {
-		r.Use(api.CorsMiddleware())
+		handler = api.CorsMiddleware(handler)
 	}
 
-	api.RegisterHandlers(r, server)
-
-	// Serve frontend
+	// Serve frontend (SPA fallback)
 	if !cfg.Dev {
 		frontendFS, err := fs.Sub(static.Frontend, "dist")
 		if err != nil {
 			slog.Error("failed to setup frontend", "err", err)
 			os.Exit(1)
 		}
-		fileServer := http.FileServer(http.FS(frontendFS))
-
-		r.NoRoute(func(c *gin.Context) {
-			path := c.Request.URL.Path
-			// Try to serve the file directly
-			if path != "/" && !strings.HasPrefix(path, "/api") {
-				c.FileFromFS(path, http.FS(frontendFS))
-				return
-			}
-			// Fallback to index.html for SPA
-			fileServer.ServeHTTP(c.Writer, c.Request)
-		})
+		handler = spaHandler(handler, http.FS(frontendFS))
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Bind, cfg.Listen)
@@ -289,7 +288,7 @@ func main() {
 		go openBrowser(fmt.Sprintf("http://%s", addr))
 	}
 
-	srv := &http.Server{Addr: addr, Handler: r}
+	srv := &http.Server{Addr: addr, Handler: handler}
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	go func() {
@@ -310,6 +309,29 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("server stopped")
+}
+
+// spaHandler wraps the API handler and falls back to the frontend filesystem.
+// Non-API paths serve static files; unknown paths serve index.html for SPA routing.
+func spaHandler(apiHandler http.Handler, frontendFS http.FileSystem) http.Handler {
+	fileServer := http.FileServer(frontendFS)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/api" {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+		// Try to serve the file directly
+		if r.URL.Path != "/" {
+			if f, err := frontendFS.Open(r.URL.Path); err == nil {
+				f.Close()
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+		// Fallback to index.html for SPA
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func printUsage() {
@@ -346,7 +368,6 @@ Other:
   -v, --version     Show version
 `, getVersion())
 }
-
 
 func openBrowser(url string) {
 	var cmd string

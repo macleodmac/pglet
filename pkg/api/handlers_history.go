@@ -1,12 +1,8 @@
 package api
 
-import (
-	"net/http"
+import "net/http"
 
-	"github.com/gin-gonic/gin"
-)
-
-func (s *Server) ListHistory(c *gin.Context, params ListHistoryParams) {
+func (s *Server) ListHistory(w http.ResponseWriter, r *http.Request, params ListHistoryParams) {
 	limit, offset := 50, 0
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -15,9 +11,9 @@ func (s *Server) ListHistory(c *gin.Context, params ListHistoryParams) {
 		offset = *params.Offset
 	}
 
-	entries, total, err := s.Repo.ListHistory(c.Request.Context(), limit, offset)
+	entries, total, err := s.svc.ListHistory(r.Context(), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -29,14 +25,14 @@ func (s *Server) ListHistory(c *gin.Context, params ListHistoryParams) {
 			Error: e.Error, ExecutedAt: e.ExecutedAt,
 		}
 	}
-	c.JSON(http.StatusOK, HistoryResponse{Entries: result, Total: total})
+	writeJSON(w, http.StatusOK, HistoryResponse{Entries: result, Total: total})
 }
 
-func (s *Server) ClearHistory(c *gin.Context) {
-	if err := s.Repo.ClearHistory(c.Request.Context()); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+func (s *Server) ClearHistory(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.ClearHistory(r.Context()); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	success := true
-	c.JSON(http.StatusOK, SuccessResponse{Success: &success})
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }

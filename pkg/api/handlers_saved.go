@@ -3,18 +3,17 @@ package api
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/macleodmac/pglet/pkg/repository"
 )
 
-func (s *Server) ListSavedQueries(c *gin.Context, params ListSavedQueriesParams) {
+func (s *Server) ListSavedQueries(w http.ResponseWriter, r *http.Request, params ListSavedQueriesParams) {
 	database := ""
 	if params.Database != nil {
 		database = *params.Database
 	}
-	queries, err := s.Repo.ListSavedQueries(c.Request.Context(), database)
+	queries, err := s.svc.ListSavedQueries(r.Context(), database)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -22,22 +21,22 @@ func (s *Server) ListSavedQueries(c *gin.Context, params ListSavedQueriesParams)
 	for i, q := range queries {
 		result[i] = repoToSavedQuery(q)
 	}
-	c.JSON(http.StatusOK, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) GetSavedQuery(c *gin.Context, id string) {
-	q, err := s.Repo.GetSavedQuery(c.Request.Context(), id)
+func (s *Server) GetSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
+	q, err := s.svc.GetSavedQuery(r.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "query not found"})
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "query not found"})
 		return
 	}
-	c.JSON(http.StatusOK, repoToSavedQuery(*q))
+	writeJSON(w, http.StatusOK, repoToSavedQuery(*q))
 }
 
-func (s *Server) CreateSavedQuery(c *gin.Context) {
+func (s *Server) CreateSavedQuery(w http.ResponseWriter, r *http.Request) {
 	var req SavedQueryInput
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 	sq := repository.SavedQuery{Title: req.Title, SQL: req.Sql}
@@ -51,18 +50,18 @@ func (s *Server) CreateSavedQuery(c *gin.Context) {
 		sq.Tags = *req.Tags
 	}
 
-	created, err := s.Repo.CreateSavedQuery(c.Request.Context(), sq)
+	created, err := s.svc.CreateSavedQuery(r.Context(), sq)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, repoToSavedQuery(*created))
+	writeJSON(w, http.StatusCreated, repoToSavedQuery(*created))
 }
 
-func (s *Server) UpdateSavedQuery(c *gin.Context, id string) {
+func (s *Server) UpdateSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
 	var req SavedQueryInput
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 	sq := repository.SavedQuery{ID: id, Title: req.Title, SQL: req.Sql}
@@ -76,21 +75,21 @@ func (s *Server) UpdateSavedQuery(c *gin.Context, id string) {
 		sq.Tags = *req.Tags
 	}
 
-	if err := s.Repo.UpdateSavedQuery(c.Request.Context(), sq); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := s.svc.UpdateSavedQuery(r.Context(), sq); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	success := true
-	c.JSON(http.StatusOK, SuccessResponse{Success: &success})
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }
 
-func (s *Server) DeleteSavedQuery(c *gin.Context, id string) {
-	if err := s.Repo.DeleteSavedQuery(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+func (s *Server) DeleteSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
+	if err := s.svc.DeleteSavedQuery(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	success := true
-	c.JSON(http.StatusOK, SuccessResponse{Success: &success})
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }
 
 func repoToSavedQuery(q repository.SavedQuery) SavedQuery {

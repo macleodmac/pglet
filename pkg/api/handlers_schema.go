@@ -1,37 +1,28 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/macleodmac/pglet/pkg/client"
+	"github.com/macleodmac/pglet/pkg/service"
 )
 
-func (s *Server) ListSchemas(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	schemas, err := cl.Schemas()
+func (s *Server) ListSchemas(w http.ResponseWriter, r *http.Request) {
+	schemas, err := s.svc.Schemas()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, schemas)
+	writeJSON(w, http.StatusOK, schemas)
 }
 
-func (s *Server) ListObjects(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	objects, err := cl.Objects()
+func (s *Server) ListObjects(w http.ResponseWriter, r *http.Request) {
+	objects, err := s.svc.Objects()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -46,7 +37,7 @@ func (s *Server) ListObjects(c *gin.Context) {
 			Types:             toSchemaObjects(group.Types),
 		}
 	}
-	c.JSON(http.StatusOK, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
 func toSchemaObjects(objs []client.SchemaObject) []SchemaObject {
@@ -60,15 +51,10 @@ func toSchemaObjects(objs []client.SchemaObject) []SchemaObject {
 	return result
 }
 
-func (s *Server) GetTableColumns(c *gin.Context, table string) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	cols, err := cl.TableColumns(table)
+func (s *Server) GetTableColumns(w http.ResponseWriter, r *http.Request, table string) {
+	cols, err := s.svc.TableColumns(table)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 
@@ -83,16 +69,10 @@ func (s *Server) GetTableColumns(c *gin.Context, table string) {
 			result[i].Comment = &col.Comment
 		}
 	}
-	c.JSON(http.StatusOK, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) GetTableRows(c *gin.Context, table string, params GetTableRowsParams) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-
+func (s *Server) GetTableRows(w http.ResponseWriter, r *http.Request, table string, params GetTableRowsParams) {
 	limit, offset := 100, 0
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -108,45 +88,35 @@ func (s *Server) GetTableRows(c *gin.Context, table string, params GetTableRowsP
 		sortOrd = string(*params.SortOrder)
 	}
 
-	result, total, err := cl.TableRows(c.Request.Context(), table, limit, offset, sortCol, sortOrd)
+	result, total, err := s.svc.TableRows(r.Context(), table, limit, offset, sortCol, sortOrd)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, TableRowsResult{
+	writeJSON(w, http.StatusOK, TableRowsResult{
 		Columns: result.Columns, ColumnTypes: result.ColumnTypes,
 		Rows: toNullableRows(result.Rows), TotalCount: total,
 		Page: offset / limit, PageSize: limit,
 	})
 }
 
-func (s *Server) GetTableInfo(c *gin.Context, table string) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	info, err := cl.TableInfo(table)
+func (s *Server) GetTableInfo(w http.ResponseWriter, r *http.Request, table string) {
+	info, err := s.svc.TableInfo(table)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, TableInfo{
+	writeJSON(w, http.StatusOK, TableInfo{
 		TotalSize: info.TotalSize, TableSize: info.TableSize,
 		IndexSize: info.IndexSize, RowEstimate: info.RowEstimate,
 	})
 }
 
-func (s *Server) GetTableIndexes(c *gin.Context, table string) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	indexes, err := cl.TableIndexes(table)
+func (s *Server) GetTableIndexes(w http.ResponseWriter, r *http.Request, table string) {
+	indexes, err := s.svc.TableIndexes(table)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 	result := make([]TableIndex, len(indexes))
@@ -156,18 +126,13 @@ func (s *Server) GetTableIndexes(c *gin.Context, table string) {
 			IsUnique: idx.IsUnique, IsPrimary: idx.IsPrimary,
 		}
 	}
-	c.JSON(http.StatusOK, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) GetTableConstraints(c *gin.Context, table string) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	constraints, err := cl.TableConstraints(table)
+func (s *Server) GetTableConstraints(w http.ResponseWriter, r *http.Request, table string) {
+	constraints, err := s.svc.TableConstraints(table)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 	result := make([]TableConstraint, len(constraints))
@@ -176,22 +141,21 @@ func (s *Server) GetTableConstraints(c *gin.Context, table string) {
 			Name: con.Name, Type: con.Type, Definition: con.Definition,
 		}
 	}
-	c.JSON(http.StatusOK, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) GetFunctionDefinition(c *gin.Context, function string) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
+func (s *Server) GetFunctionDefinition(w http.ResponseWriter, r *http.Request, function string) {
 	schema, name := splitQualifiedName(function)
-	fd, err := cl.FunctionDefinition(schema, name)
+	fd, err := s.svc.FunctionDefinition(schema, name)
 	if err != nil {
-		c.JSON(http.StatusNotFound, ErrorResponse{Error: "function not found"})
+		if errors.Is(err, service.ErrNotConnected) {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		} else {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "function not found"})
+		}
 		return
 	}
-	c.JSON(http.StatusOK, FunctionDefinition{
+	writeJSON(w, http.StatusOK, FunctionDefinition{
 		Name: fd.Name, Schema: fd.Schema, Definition: fd.Definition,
 		Language: fd.Language, Arguments: fd.Arguments, ReturnType: fd.ReturnType,
 		Volatility: fd.Volatility, Kind: fd.Kind,
@@ -206,29 +170,19 @@ func splitQualifiedName(name string) (string, string) {
 	return "public", parts[0]
 }
 
-func (s *Server) GetTablesStats(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	result, err := cl.TablesStats()
+func (s *Server) GetTablesStats(w http.ResponseWriter, r *http.Request) {
+	result, err := s.svc.TablesStats()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toQueryResult(result))
+	writeJSON(w, http.StatusOK, toQueryResult(result))
 }
 
-func (s *Server) GetActivity(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	activities, err := cl.Activity()
+func (s *Server) GetActivity(w http.ResponseWriter, r *http.Request) {
+	activities, err := s.svc.Activity()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 	result := make([]Activity, len(activities))
@@ -240,28 +194,23 @@ func (s *Server) GetActivity(c *gin.Context) {
 			WaitEvent: a.WaitEvent, WaitEventType: a.WaitEventType,
 		}
 	}
-	c.JSON(http.StatusOK, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
-func (s *Server) GetServerSettings(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-	result, err := cl.ServerSettings()
+func (s *Server) GetServerSettings(w http.ResponseWriter, r *http.Request) {
+	result, err := s.svc.ServerSettings()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toQueryResult(result))
+	writeJSON(w, http.StatusOK, toQueryResult(result))
 }
 
-func toQueryResult(r *client.QueryResult) QueryResult {
+func toQueryResult(qr *client.QueryResult) QueryResult {
 	return QueryResult{
-		Columns: r.Columns, ColumnTypes: r.ColumnTypes,
-		Rows: toNullableRows(r.Rows), RowCount: r.RowCount,
-		DurationMs: r.DurationMs,
+		Columns: qr.Columns, ColumnTypes: qr.ColumnTypes,
+		Rows: toNullableRows(qr.Rows), RowCount: qr.RowCount,
+		DurationMs: qr.DurationMs,
 	}
 }
 
@@ -273,10 +222,18 @@ func toNullableRows(rows [][]any) [][]CellValue {
 			if v == nil {
 				result[i][j] = nil
 			} else {
-				s := fmt.Sprintf("%v", v)
-				result[i][j] = &s
+				str := fmt.Sprintf("%v", v)
+				result[i][j] = &str
 			}
 		}
 	}
 	return result
+}
+
+// svcStatus maps service errors to HTTP status codes.
+func svcStatus(err error) int {
+	if errors.Is(err, service.ErrNotConnected) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
 }

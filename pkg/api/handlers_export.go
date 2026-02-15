@@ -5,42 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) ExportQuery(c *gin.Context) {
-	cl := s.getClient()
-	if cl == nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "not connected"})
-		return
-	}
-
+func (s *Server) ExportQuery(w http.ResponseWriter, r *http.Request) {
 	var req ExportRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	result, err := cl.QueryWithContext(c.Request.Context(), req.Query)
+	result, err := s.svc.ExportQuery(r.Context(), req.Query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, svcStatus(err), ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	switch req.Format {
 	case Csv:
-		c.Header("Content-Type", "text/csv")
-		c.Header("Content-Disposition", "attachment; filename=export.csv")
-		w := csv.NewWriter(c.Writer)
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=export.csv")
+		cw := csv.NewWriter(w)
 
-		// Write header row
-		if err := w.Write(result.Columns); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to write CSV header"})
+		if err := cw.Write(result.Columns); err != nil {
 			return
 		}
 
-		// Write data rows
 		for _, row := range result.Rows {
 			record := make([]string, len(row))
 			for i, v := range row {
@@ -50,23 +39,16 @@ func (s *Server) ExportQuery(c *gin.Context) {
 					record[i] = fmt.Sprintf("%v", v)
 				}
 			}
-			if err := w.Write(record); err != nil {
-				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to write CSV row"})
+			if err := cw.Write(record); err != nil {
 				return
 			}
 		}
-		w.Flush()
-
-		if err := w.Error(); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "CSV write error"})
-			return
-		}
+		cw.Flush()
 
 	case Json:
-		c.Header("Content-Type", "application/json")
-		c.Header("Content-Disposition", "attachment; filename=export.json")
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", "attachment; filename=export.json")
 
-		// Build array of objects
 		records := make([]map[string]interface{}, len(result.Rows))
 		for i, row := range result.Rows {
 			record := make(map[string]interface{})
@@ -78,12 +60,9 @@ func (s *Server) ExportQuery(c *gin.Context) {
 			records[i] = record
 		}
 
-		if err := json.NewEncoder(c.Writer).Encode(records); err != nil {
-			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to encode JSON"})
-			return
-		}
+		json.NewEncoder(w).Encode(records)
 
 	default:
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "unsupported format, use csv or json"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "unsupported format, use csv or json"})
 	}
 }

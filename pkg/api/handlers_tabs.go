@@ -1,34 +1,30 @@
 package api
 
-import (
-	"net/http"
+import "net/http"
 
-	"github.com/gin-gonic/gin"
-)
-
-func (s *Server) GetTabState(c *gin.Context) {
-	data, err := s.Repo.GetTabState(c.Request.Context())
+func (s *Server) GetTabState(w http.ResponseWriter, r *http.Request) {
+	data, err := s.svc.GetTabState(r.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, TabState{Data: &data})
+	writeJSON(w, http.StatusOK, TabState{Data: &data})
 }
 
-func (s *Server) SaveTabState(c *gin.Context) {
+func (s *Server) SaveTabState(w http.ResponseWriter, r *http.Request) {
 	var req TabState
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request"})
 		return
 	}
 	data := ""
 	if req.Data != nil {
 		data = *req.Data
 	}
-	if err := s.Repo.SaveTabState(c.Request.Context(), data); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+	if err := s.svc.SaveTabState(r.Context(), data); err != nil {
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	success := true
-	c.JSON(http.StatusOK, SuccessResponse{Success: &success})
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }
