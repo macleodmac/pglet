@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	selfupdate "github.com/creativeprojects/go-selfupdate"
 	"github.com/gin-gonic/gin"
 	"github.com/macleodmac/pglet/pkg/api"
 	"github.com/macleodmac/pglet/pkg/client"
@@ -203,6 +204,12 @@ func buildConnectionURL(cfg Config) string {
 }
 
 func main() {
+	// Handle subcommands before anything else.
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		runUpdate()
+		return
+	}
+
 	start := time.Now()
 
 	slog.SetDefault(slog.New(tint.NewHandler(os.Stderr, &tint.Options{
@@ -210,6 +217,8 @@ func main() {
 	})))
 
 	cfg := parseConfig()
+
+	api.AppVersion = getVersion()
 
 	// Setup repository
 	repoDir := resolveRepoDir(cfg)
@@ -315,11 +324,13 @@ func printUsage() {
 
 Usage:
   pglet [flags]
+  pglet update
 
 Examples:
   pglet                                          # start and connect via UI
   pglet --url postgres://localhost:5432/mydb      # connect on startup
   pglet --host localhost --port 5432 --db mydb    # connect with flags
+  pglet update                                   # self-update to latest release
 
 Connection:
   --url <url>       PostgreSQL connection URL
@@ -343,6 +354,63 @@ Other:
   -h, --help        Show this help
   -v, --version     Show version
 `, getVersion())
+}
+
+const updateRepo = "macleodmac/pglet"
+
+func runUpdate() {
+	current := getVersion()
+	fmt.Printf("Current version: %s\n", current)
+
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		fmt.Fprintln(os.Stderr, "GITHUB_TOKEN is required for updates. Create one at https://github.com/settings/tokens")
+		os.Exit(1)
+	}
+
+	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{
+		APIToken: token,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating updater: %v\n", err)
+		os.Exit(1)
+	}
+
+	updater, err := selfupdate.NewUpdater(selfupdate.Config{Source: source})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating updater: %v\n", err)
+		os.Exit(1)
+	}
+
+	latest, found, err := updater.DetectLatest(context.Background(), selfupdate.ParseSlug(updateRepo))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error checking for updates: %v\n", err)
+		os.Exit(1)
+	}
+	if !found {
+		fmt.Println("No releases found.")
+		return
+	}
+
+	if current != "dev" && !latest.GreaterThan(current) {
+		fmt.Printf("Already up to date (%s).\n", current)
+		return
+	}
+
+	fmt.Printf("Updating to %s...\n", latest.Version())
+
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error locating executable: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := updater.UpdateTo(context.Background(), latest, exe); err != nil {
+		fmt.Fprintf(os.Stderr, "Error updating: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Updated to %s.\n", latest.Version())
 }
 
 func openBrowser(url string) {

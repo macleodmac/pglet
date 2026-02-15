@@ -101,7 +101,10 @@ func (s *Server) ListDatabases(c *gin.Context) {
 	c.JSON(http.StatusOK, dbs)
 }
 
+// AppVersion is set from main at startup.
+var AppVersion = "dev"
+
 func (s *Server) GetAppInfo(c *gin.Context) {
-	v := "0.1.0"
+	v := AppVersion
 	c.JSON(http.StatusOK, AppInfo{Version: &v})
 }
