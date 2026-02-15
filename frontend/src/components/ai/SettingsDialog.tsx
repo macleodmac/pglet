@@ -1,4 +1,4 @@
-import { useSettings } from '../../api/queries'
+import { useAppInfo } from '../../api/queries'
 import { useThemeStore } from '../../stores/theme'
 
 interface SettingsDialogProps {
@@ -6,12 +6,12 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
-  const { data: settings } = useSettings()
+  const { data: appInfo } = useAppInfo()
 
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
 
-  const aiKeySet = settings?.ai_api_key_set === 'true'
+  const aiKeySet = appInfo?.ai_enabled === true
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>

@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetSettingsData, GetSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RunQueryData, RunQueryResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses, UpdateSettingsData, UpdateSettingsResponses } from './types.gen';
+import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -227,15 +227,15 @@ export const clearHistory = <ThrowOnError extends boolean = false>(options?: Opt
 export const listHistory = <ThrowOnError extends boolean = false>(options?: Options<ListHistoryData, ThrowOnError>) => (options?.client ?? client).get<ListHistoryResponses, unknown, ThrowOnError>({ url: '/api/history', ...options });
 
 /**
- * Get all settings
+ * Get persisted tab state
  */
-export const getSettings = <ThrowOnError extends boolean = false>(options?: Options<GetSettingsData, ThrowOnError>) => (options?.client ?? client).get<GetSettingsResponses, unknown, ThrowOnError>({ url: '/api/settings', ...options });
+export const getTabState = <ThrowOnError extends boolean = false>(options?: Options<GetTabStateData, ThrowOnError>) => (options?.client ?? client).get<GetTabStateResponses, unknown, ThrowOnError>({ url: '/api/tabs', ...options });
 
 /**
- * Update settings
+ * Save tab state
  */
-export const updateSettings = <ThrowOnError extends boolean = false>(options: Options<UpdateSettingsData, ThrowOnError>) => (options.client ?? client).put<UpdateSettingsResponses, unknown, ThrowOnError>({
-    url: '/api/settings',
+export const saveTabState = <ThrowOnError extends boolean = false>(options: Options<SaveTabStateData, ThrowOnError>) => (options.client ?? client).put<SaveTabStateResponses, unknown, ThrowOnError>({
+    url: '/api/tabs',
     ...options,
     headers: {
         'Content-Type': 'application/json',

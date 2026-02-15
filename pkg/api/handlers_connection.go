@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/macleodmac/pglet/pkg/client"
@@ -106,5 +107,6 @@ var AppVersion = "dev"
 
 func (s *Server) GetAppInfo(c *gin.Context) {
 	v := AppVersion
-	c.JSON(http.StatusOK, AppInfo{Version: &v})
+	aiEnabled := os.Getenv("ANTHROPIC_API_KEY") != ""
+	c.JSON(http.StatusOK, AppInfo{Version: &v, AiEnabled: &aiEnabled})
 }

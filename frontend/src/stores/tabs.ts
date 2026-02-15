@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { formatDialect } from '@avallete/sql-formatter/lite'
 import { postgresql } from '@avallete/sql-formatter/languages/postgresql'
-import { getSettings, updateSettings } from '../api/client'
+import { getTabState, saveTabState } from '../api/client'
 
 function formatSql(sql: string): string {
   if (!sql.trim()) return sql
@@ -82,9 +82,8 @@ export const useTabStore = create<TabState>((set, get) => ({
 
   initFromServer: async () => {
     try {
-      const res = await getSettings()
-      const settings = res.data as Record<string, string> | undefined
-      const raw = settings?.tabs
+      const res = await getTabState()
+      const raw = (res.data as { data?: string })?.data
       if (!raw) {
         set({ initialized: true })
         return
@@ -298,7 +297,7 @@ export const useTabStore = create<TabState>((set, get) => ({
   },
 }))
 
-// --- Debounced auto-save to server ---
+// --- Debounced auto-save to localStorage ---
 
 function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
   let timer: ReturnType<typeof setTimeout>
@@ -321,7 +320,7 @@ function serializeForSave(state: { tabs: Tab[]; activeTabId: string }): string {
 
 const saveToServer = debounce((state: { tabs: Tab[]; activeTabId: string; initialized: boolean }) => {
   if (!state.initialized) return
-  updateSettings({ body: { tabs: serializeForSave(state) } })
+  saveTabState({ body: { data: serializeForSave(state) } })
 }, 1000)
 
 useTabStore.subscribe((state) => saveToServer(state))

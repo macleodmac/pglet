@@ -525,30 +525,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
 
-  /api/settings:
+  /api/tabs:
     get:
-      operationId: getSettings
-      summary: Get all settings
+      operationId: getTabState
+      summary: Get persisted tab state
       responses:
         '200':
-          description: Settings map
+          description: Tab state JSON blob
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties:
-                  type: string
+                $ref: '#/components/schemas/TabState'
     put:
-      operationId: updateSettings
-      summary: Update settings
+      operationId: saveTabState
+      summary: Save tab state
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties:
-                type: string
+              $ref: '#/components/schemas/TabState'
       responses:
         '200':
           description: Success
@@ -656,6 +652,8 @@ components:
       properties:
         version:
           type: string
+        ai_enabled:
+          type: boolean
 
     SchemaObject:
       type: object
@@ -964,6 +962,13 @@ components:
           type: string
         kind:
           type: string
+
+    TabState:
+      type: object
+      properties:
+        data:
+          type: string
+          description: Opaque JSON string containing tab layout
 
     AiGenerateRequest:
       type: object

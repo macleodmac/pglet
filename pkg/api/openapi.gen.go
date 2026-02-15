@@ -73,7 +73,8 @@ type AiTabNameResponse struct {
 
 // AppInfo defines model for AppInfo.
 type AppInfo struct {
-	Version *string `json:"version,omitempty"`
+	AiEnabled *bool   `json:"ai_enabled,omitempty"`
+	Version   *string `json:"version,omitempty"`
 }
 
 // CancelRequest defines model for CancelRequest.
@@ -219,6 +220,12 @@ type SwitchDBRequest struct {
 	Database string `json:"database"`
 }
 
+// TabState defines model for TabState.
+type TabState struct {
+	// Data Opaque JSON string containing tab layout
+	Data *string `json:"data,omitempty"`
+}
+
 // TableConstraint defines model for TableConstraint.
 type TableConstraint struct {
 	Columns    *[]string `json:"columns,omitempty"`
@@ -265,9 +272,6 @@ type ListSavedQueriesParams struct {
 	Database *string `form:"database,omitempty" json:"database,omitempty"`
 }
 
-// UpdateSettingsJSONBody defines parameters for UpdateSettings.
-type UpdateSettingsJSONBody map[string]string
-
 // GetTableRowsParams defines parameters for GetTableRows.
 type GetTableRowsParams struct {
 	Limit      *int                         `form:"limit,omitempty" json:"limit,omitempty"`
@@ -309,11 +313,11 @@ type CreateSavedQueryJSONRequestBody = SavedQueryInput
 // UpdateSavedQueryJSONRequestBody defines body for UpdateSavedQuery for application/json ContentType.
 type UpdateSavedQueryJSONRequestBody = SavedQueryInput
 
-// UpdateSettingsJSONRequestBody defines body for UpdateSettings for application/json ContentType.
-type UpdateSettingsJSONRequestBody UpdateSettingsJSONBody
-
 // SwitchDatabaseJSONRequestBody defines body for SwitchDatabase for application/json ContentType.
 type SwitchDatabaseJSONRequestBody = SwitchDBRequest
+
+// SaveTabStateJSONRequestBody defines body for SaveTabState for application/json ContentType.
+type SaveTabStateJSONRequestBody = TabState
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -392,12 +396,6 @@ type ServerInterface interface {
 	// PostgreSQL server settings
 	// (GET /api/server_settings)
 	GetServerSettings(c *gin.Context)
-	// Get all settings
-	// (GET /api/settings)
-	GetSettings(c *gin.Context)
-	// Update settings
-	// (PUT /api/settings)
-	UpdateSettings(c *gin.Context)
 	// Switch to a different database
 	// (POST /api/switchdb)
 	SwitchDatabase(c *gin.Context)
@@ -419,6 +417,12 @@ type ServerInterface interface {
 	// All tables size and row stats
 	// (GET /api/tables_stats)
 	GetTablesStats(c *gin.Context)
+	// Get persisted tab state
+	// (GET /api/tabs)
+	GetTabState(c *gin.Context)
+	// Save tab state
+	// (PUT /api/tabs)
+	SaveTabState(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -833,32 +837,6 @@ func (siw *ServerInterfaceWrapper) GetServerSettings(c *gin.Context) {
 	siw.Handler.GetServerSettings(c)
 }
 
-// GetSettings operation middleware
-func (siw *ServerInterfaceWrapper) GetSettings(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetSettings(c)
-}
-
-// UpdateSettings operation middleware
-func (siw *ServerInterfaceWrapper) UpdateSettings(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UpdateSettings(c)
-}
-
 // SwitchDatabase operation middleware
 func (siw *ServerInterfaceWrapper) SwitchDatabase(c *gin.Context) {
 
@@ -1040,6 +1018,32 @@ func (siw *ServerInterfaceWrapper) GetTablesStats(c *gin.Context) {
 	siw.Handler.GetTablesStats(c)
 }
 
+// GetTabState operation middleware
+func (siw *ServerInterfaceWrapper) GetTabState(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTabState(c)
+}
+
+// SaveTabState operation middleware
+func (siw *ServerInterfaceWrapper) SaveTabState(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SaveTabState(c)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -1092,8 +1096,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PUT(options.BaseURL+"/api/saved-queries/:id", wrapper.UpdateSavedQuery)
 	router.GET(options.BaseURL+"/api/schemas", wrapper.ListSchemas)
 	router.GET(options.BaseURL+"/api/server_settings", wrapper.GetServerSettings)
-	router.GET(options.BaseURL+"/api/settings", wrapper.GetSettings)
-	router.PUT(options.BaseURL+"/api/settings", wrapper.UpdateSettings)
 	router.POST(options.BaseURL+"/api/switchdb", wrapper.SwitchDatabase)
 	router.GET(options.BaseURL+"/api/tables/:table", wrapper.GetTableColumns)
 	router.GET(options.BaseURL+"/api/tables/:table/constraints", wrapper.GetTableConstraints)
@@ -1101,4 +1103,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/tables/:table/info", wrapper.GetTableInfo)
 	router.GET(options.BaseURL+"/api/tables/:table/rows", wrapper.GetTableRows)
 	router.GET(options.BaseURL+"/api/tables_stats", wrapper.GetTablesStats)
+	router.GET(options.BaseURL+"/api/tabs", wrapper.GetTabState)
+	router.PUT(options.BaseURL+"/api/tabs", wrapper.SaveTabState)
 }

@@ -25,8 +25,7 @@ import {
   deleteSavedQuery,
   listHistory,
   clearHistory,
-  getSettings,
-  updateSettings,
+  getAppInfo,
   aiGenerate,
   aiSuggestions,
   aiTabName,
@@ -251,19 +250,11 @@ export function useClearHistory() {
   })
 }
 
-// Settings
-export function useSettings() {
+// App info
+export function useAppInfo() {
   return useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => unwrap(await getSettings()),
-  })
-}
-
-export function useUpdateSettings() {
-  return useMutation({
-    mutationFn: async (settings: Record<string, string>) =>
-      unwrap(await updateSettings({ body: settings })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    queryKey: ['app-info'],
+    queryFn: async () => unwrap(await getAppInfo()),
   })
 }
 

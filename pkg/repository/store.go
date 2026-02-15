@@ -11,7 +11,7 @@ import (
 var (
 	bucketSavedQueries = []byte("saved_queries")
 	bucketHistory      = []byte("history")
-	bucketSettings     = []byte("settings")
+	bucketTabs         = []byte("tabs")
 )
 
 type Repository struct {
@@ -24,19 +24,6 @@ func Open(path string) (*Repository, error) {
 		return nil, fmt.Errorf("create repository dir: %w", err)
 	}
 
-	// If an old sqlite DB exists, back it up
-	if info, err := os.Stat(path); err == nil && info.Size() > 0 {
-		header := make([]byte, 16)
-		if f, err := os.Open(path); err == nil {
-			f.Read(header)
-			f.Close()
-			if string(header[:6]) == "SQLite" {
-				backup := path + ".sqlite.bak"
-				os.Rename(path, backup)
-			}
-		}
-	}
-
 	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open bbolt: %w", err)
@@ -44,7 +31,7 @@ func Open(path string) (*Repository, error) {
 
 	// Ensure buckets exist
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bucketSavedQueries, bucketHistory, bucketSettings} {
+		for _, b := range [][]byte{bucketSavedQueries, bucketHistory, bucketTabs} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return err
 			}

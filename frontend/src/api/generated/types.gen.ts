@@ -31,6 +31,7 @@ export type ConnectionInfo = {
 
 export type AppInfo = {
     version?: string;
+    ai_enabled?: boolean;
 };
 
 export type SchemaObject = {
@@ -172,6 +173,13 @@ export type FunctionDefinition = {
     return_type: string;
     volatility: string;
     kind: string;
+};
+
+export type TabState = {
+    /**
+     * Opaque JSON string containing tab layout
+     */
+    data?: string;
 };
 
 export type AiGenerateRequest = {
@@ -720,41 +728,37 @@ export type ListHistoryResponses = {
 
 export type ListHistoryResponse = ListHistoryResponses[keyof ListHistoryResponses];
 
-export type GetSettingsData = {
+export type GetTabStateData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/settings';
+    url: '/api/tabs';
 };
 
-export type GetSettingsResponses = {
+export type GetTabStateResponses = {
     /**
-     * Settings map
+     * Tab state JSON blob
      */
-    200: {
-        [key: string]: string;
-    };
+    200: TabState;
 };
 
-export type GetSettingsResponse = GetSettingsResponses[keyof GetSettingsResponses];
+export type GetTabStateResponse = GetTabStateResponses[keyof GetTabStateResponses];
 
-export type UpdateSettingsData = {
-    body: {
-        [key: string]: string;
-    };
+export type SaveTabStateData = {
+    body: TabState;
     path?: never;
     query?: never;
-    url: '/api/settings';
+    url: '/api/tabs';
 };
 
-export type UpdateSettingsResponses = {
+export type SaveTabStateResponses = {
     /**
      * Success
      */
     200: SuccessResponse;
 };
 
-export type UpdateSettingsResponse = UpdateSettingsResponses[keyof UpdateSettingsResponses];
+export type SaveTabStateResponse = SaveTabStateResponses[keyof SaveTabStateResponses];
 
 export type AiGenerateData = {
     body: AiGenerateRequest;
