@@ -575,6 +575,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/AiGenerateResponse'
 
+  /api/ai/suggestions:
+    get:
+      operationId: aiSuggestions
+      summary: Generate contextual query suggestions based on connected database
+      responses:
+        '200':
+          description: Suggested prompts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSuggestionsResponse'
+
   /api/ai/tab-name:
     post:
       operationId: aiTabName
@@ -983,6 +995,15 @@ components:
           type: string
         content:
           type: string
+
+    AiSuggestionsResponse:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items:
+            type: string
 
     AiTabNameRequest:
       type: object

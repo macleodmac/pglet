@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+
 import { CellDetail } from './CellDetail'
 
 const meta: Meta<typeof CellDetail> = {
@@ -57,6 +58,42 @@ export const JsonArray: Story = {
     column: 'tags',
     columnType: 'JSONB',
     value: JSON.stringify(['postgres', 'database', 'sql', 'admin']),
+    onClose: () => {},
+  },
+}
+
+export const EmptyString: Story = {
+  args: {
+    column: 'notes',
+    columnType: 'TEXT',
+    value: '',
+    onClose: () => {},
+  },
+}
+
+export const Uuid: Story = {
+  args: {
+    column: 'id',
+    columnType: 'UUID',
+    value: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    onClose: () => {},
+  },
+}
+
+export const Timestamp: Story = {
+  args: {
+    column: 'created_at',
+    columnType: 'TIMESTAMPTZ',
+    value: '2025-01-15T09:30:00.000Z',
+    onClose: () => {},
+  },
+}
+
+export const Integer: Story = {
+  args: {
+    column: 'order_count',
+    columnType: 'INT4',
+    value: '42',
     onClose: () => {},
   },
 }

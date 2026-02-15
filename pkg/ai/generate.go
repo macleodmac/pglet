@@ -163,6 +163,31 @@ Rules:
 	return name, nil
 }
 
+// GenerateSuggestions produces 4 contextual query suggestions based on table names.
+func (c *Client) GenerateSuggestions(ctx context.Context, tables []string) ([]string, error) {
+	system := `You generate short, natural-language query suggestions for a PostgreSQL database browser.
+Rules:
+- Return a JSON array of exactly 4 strings
+- Each suggestion should be a natural-language prompt a user might type to generate SQL
+- Use actual table names from the provided list
+- Keep each suggestion under 50 characters
+- Cover different query types: aggregation, filtering, joins, listing
+- Do not include SQL syntax, just natural language`
+
+	msgs := []Message{{Role: "user", Content: "Tables: " + strings.Join(tables, ", ")}}
+
+	text, err := c.complete(ctx, c.FastModel, system, msgs, 256)
+	if err != nil {
+		return nil, err
+	}
+
+	var suggestions []string
+	if err := extractJSON(text, &suggestions); err != nil {
+		return nil, fmt.Errorf("parse suggestions: %w", err)
+	}
+	return suggestions, nil
+}
+
 // selectTables asks a fast model which tables are relevant to the prompt.
 // Falls back to the full schema on any error.
 func (c *Client) selectTables(ctx context.Context, schema map[string][]Column, prompt string) map[string][]Column {

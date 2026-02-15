@@ -190,6 +190,10 @@ export type AiMessage = {
     content: string;
 };
 
+export type AiSuggestionsResponse = {
+    suggestions: Array<string>;
+};
+
 export type AiTabNameRequest = {
     sql: string;
 };
@@ -767,6 +771,22 @@ export type AiGenerateResponses = {
 };
 
 export type AiGenerateResponse2 = AiGenerateResponses[keyof AiGenerateResponses];
+
+export type AiSuggestionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/ai/suggestions';
+};
+
+export type AiSuggestionsResponses = {
+    /**
+     * Suggested prompts
+     */
+    200: AiSuggestionsResponse;
+};
+
+export type AiSuggestionsResponse2 = AiSuggestionsResponses[keyof AiSuggestionsResponses];
 
 export type AiTabNameData = {
     body: AiTabNameRequest;

@@ -9,7 +9,7 @@ import { AiChatPanel } from '../ai/AiChatPanel'
 
 import { useTabStore } from '../../stores/tabs'
 import { useConnectionStore } from '../../stores/connection'
-import { useRunQuery, useExplainQuery, useCancelQuery, useAiGenerate } from '../../api/queries'
+import { useRunQuery, useExplainQuery, useCancelQuery, useAiGenerate, useAiSuggestions } from '../../api/queries'
 import { autoNameTab } from '../../api/queries'
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from 'react'
 
@@ -49,6 +49,7 @@ export function TabPanel({ tab }: { tab: Tab }) {
   const explainQuery = useExplainQuery()
   const cancelQuery = useCancelQuery()
   const aiGenerate = useAiGenerate()
+  const aiSuggestions = useAiSuggestions()
   const database = useConnectionStore((s) => s.info?.database ?? '')
   const [result, setResult] = useState<QueryResult | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -178,6 +179,7 @@ export function TabPanel({ tab }: { tab: Tab }) {
     prompt: tab.aiPrompt ?? '',
     error: tab.aiError ?? null,
     isGenerating: aiGenerate.isPending,
+    suggestions: aiSuggestions.data?.suggestions,
     onPromptChange: (aiPrompt: string) => updateTab(tab.id, { aiPrompt }),
     onSubmit: handleAiSubmit,
     onNavigate: (index: number) => setAiTurnIndex(tab.id, index),
@@ -188,7 +190,7 @@ export function TabPanel({ tab }: { tab: Tab }) {
       <div className="relative flex flex-1 flex-col overflow-hidden">
         {/* Full-screen welcome overlay — shown before first query */}
         <div
-          className={`absolute inset-0 z-10 transition-opacity duration-300 ${
+          className={`absolute inset-0 z-20 overflow-hidden transition-opacity duration-300 ${
             aiHasTurns ? 'pointer-events-none opacity-0' : 'opacity-100'
           }`}
         >

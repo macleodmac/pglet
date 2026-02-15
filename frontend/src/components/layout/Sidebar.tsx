@@ -7,6 +7,7 @@ import { SavedQueryList } from '../saved-queries/SavedQueryList'
 import { SaveQueryDialog } from '../saved-queries/SaveQueryDialog'
 import { HistoryPanel } from '../history/HistoryPanel'
 import type { SavedQuery } from '../../api/generated'
+import { Icon } from '../ui/Icon'
 
 const typeOrder: Record<string, number> = {
   tables: 0,
@@ -135,13 +136,24 @@ export function Sidebar({ activeSection: controlledActiveSection, onSectionChang
 
             {/* Search */}
             <div className="border-b border-surface-200 px-2 py-1.5 dark:border-surface-800">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filter objects..."
-                className="w-full rounded border border-surface-300 bg-white px-2 py-1 text-xs text-gray-700 placeholder:text-gray-400 dark:border-surface-700 dark:bg-surface-800 dark:text-gray-300 dark:placeholder:text-gray-500"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Filter objects..."
+                  className="w-full rounded border border-surface-300 bg-white px-2 py-1 pr-6 text-xs text-gray-700 placeholder:text-gray-400 dark:border-surface-700 dark:bg-surface-800 dark:text-gray-300 dark:placeholder:text-gray-500"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-1 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-gray-400 hover:bg-surface-200 hover:text-gray-600 dark:hover:bg-surface-700 dark:hover:text-gray-300"
+                  >
+                    <Icon name="xmark" className="h-2.5 w-2.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {isLoading && (

@@ -148,3 +148,19 @@ button, a, select, input, textarea {
 .typing-dot:nth-child(3) {
   animation-delay: 0.4s;
 }
+
+@keyframes shimmer-line {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer-line {
+  background: linear-gradient(90deg, var(--color-surface-200) 25%, var(--color-surface-100) 50%, var(--color-surface-200) 75%);
+  background-size: 200% 100%;
+  animation: shimmer-line 1.8s ease-in-out infinite;
+}
+
+.dark .animate-shimmer-line {
+  background: linear-gradient(90deg, var(--color-surface-800) 25%, var(--color-surface-850) 50%, var(--color-surface-800) 75%);
+  background-size: 200% 100%;
+}

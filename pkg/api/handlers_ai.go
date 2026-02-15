@@ -53,6 +53,40 @@ func (s *Server) AiGenerate(c *gin.Context) {
 	c.JSON(http.StatusOK, AiGenerateResponse{Sql: sql, Explanation: explanation})
 }
 
+func (s *Server) AiSuggestions(c *gin.Context) {
+	apiKey, _ := s.Repo.GetSetting(c.Request.Context(), "ai_api_key")
+	if apiKey == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "AI API key not configured. Set it in Settings."})
+		return
+	}
+
+	cl := s.getClient()
+	if cl == nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Not connected to a database"})
+		return
+	}
+
+	allCols, err := cl.AllTableColumns()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to fetch schema"})
+		return
+	}
+
+	tables := make([]string, 0, len(allCols))
+	for fqn := range allCols {
+		tables = append(tables, fqn)
+	}
+
+	aiClient := ai.NewClient(apiKey)
+	suggestions, err := aiClient.GenerateSuggestions(c.Request.Context(), tables)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, AiSuggestionsResponse{Suggestions: suggestions})
+}
+
 func (s *Server) AiTabName(c *gin.Context) {
 	var req AiTabNameRequest
 	if err := c.BindJSON(&req); err != nil {

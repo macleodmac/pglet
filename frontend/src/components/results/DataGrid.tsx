@@ -169,29 +169,31 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
                       ) : (
                         <span className="truncate text-gray-800 dark:text-gray-200">{cell}</span>
                       )}
-                      <button
-                        type="button"
-                        className={`absolute right-1 top-1/2 hidden -translate-y-1/2 rounded p-0.5 group-hover/cell:block ${
-                          copiedCell === `${virtualRow.index}-${colIdx}`
-                            ? 'text-success'
-                            : 'text-gray-400 hover:bg-surface-200 hover:text-gray-600 dark:hover:bg-surface-700 dark:hover:text-gray-300'
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const key = `${virtualRow.index}-${colIdx}`
-                          navigator.clipboard.writeText(cell ?? '').then(() => {
-                            setCopiedCell(key)
-                            if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
-                            copiedTimeout.current = setTimeout(() => setCopiedCell(null), 1500)
-                          })
-                        }}
-                        title="Copy"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                        </svg>
-                      </button>
+                      {cell != null && cell !== '' && (
+                        <button
+                          type="button"
+                          className={`absolute right-1 top-1/2 hidden -translate-y-1/2 rounded p-0.5 group-hover/cell:block ${
+                            copiedCell === `${virtualRow.index}-${colIdx}`
+                              ? 'text-success'
+                              : 'text-gray-400 hover:bg-surface-200 hover:text-gray-600 dark:hover:bg-surface-700 dark:hover:text-gray-300'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const key = `${virtualRow.index}-${colIdx}`
+                            navigator.clipboard.writeText(cell).then(() => {
+                              setCopiedCell(key)
+                              if (copiedTimeout.current) clearTimeout(copiedTimeout.current)
+                              copiedTimeout.current = setTimeout(() => setCopiedCell(null), 1500)
+                            })
+                          }}
+                          title="Copy"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

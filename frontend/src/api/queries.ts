@@ -28,6 +28,7 @@ import {
   getSettings,
   updateSettings,
   aiGenerate,
+  aiSuggestions,
   aiTabName,
 } from './client'
 import type { SavedQueryInput } from './generated'
@@ -267,6 +268,14 @@ export function useUpdateSettings() {
 }
 
 // AI
+export function useAiSuggestions() {
+  return useQuery({
+    queryKey: ['ai-suggestions'],
+    queryFn: async () => unwrap(await aiSuggestions()),
+    staleTime: Infinity,
+  })
+}
+
 export function useAiGenerate() {
   return useMutation({
     mutationFn: async (params: {

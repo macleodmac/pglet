@@ -38,7 +38,8 @@ export function PromptInput({
         rows={rows}
         className="w-full resize-none rounded-lg border border-surface-300 bg-white px-3 py-2 text-xs placeholder-gray-400 outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 dark:border-surface-700 dark:bg-surface-900 dark:text-gray-100 dark:placeholder-gray-500"
       />
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-gray-400 dark:text-gray-500">Cmd+Enter to send</span>
         <button
           type="button"
           onClick={onSubmit}
