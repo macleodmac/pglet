@@ -3,4 +3,4 @@ output: pkg/api/openapi.gen.go
 generate:
   gin-server: true
   models: true
-  embedded-spec: true
+  embedded-spec: false
