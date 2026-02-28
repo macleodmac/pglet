@@ -7,9 +7,9 @@ dev-frontend:
 	cd frontend && pnpm run dev
 
 dev-backend:
-	PGLET_DEV=1 go run main.go --dev --cors
+	PGLET_DEV=1 go run main.go --dev --cors --url postgres://pglet:pglet@localhost:5432/demo?sslmode=disable
 
-dev:
+dev: db-up
 	@make -j2 dev-frontend dev-backend
 
 build: build-frontend build-backend
@@ -37,3 +37,13 @@ lint:
 deps:
 	cd frontend && pnpm install
 	go mod tidy
+
+db-up:
+	docker compose up -d postgres
+
+db-down:
+	docker compose down
+
+db-reset:
+	docker compose down -v
+	docker compose up -d postgres

@@ -56,10 +56,14 @@ func (s *Server) SwitchDatabase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
-	info, connected, err := s.svc.ConnectionInfo()
+	info, connected, connecting, err := s.svc.ConnectionInfo()
 	if !connected {
 		c := false
-		writeJSON(w, http.StatusOK, ConnectionInfo{Connected: &c})
+		resp := ConnectionInfo{Connected: &c}
+		if connecting {
+			resp.Connecting = &connecting
+		}
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 	if err != nil {

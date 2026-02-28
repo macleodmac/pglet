@@ -36,16 +36,20 @@ func (s *Service) SwitchDatabase(database string) (*client.ConnectionInfo, error
 	return info, nil
 }
 
-func (s *Service) ConnectionInfo() (*client.ConnectionInfo, bool, error) {
-	cl := s.GetClient()
+func (s *Service) ConnectionInfo() (info *client.ConnectionInfo, connected bool, connecting bool, err error) {
+	s.mu.RLock()
+	cl := s.client
+	conn := s.connecting
+	s.mu.RUnlock()
+
 	if cl == nil {
-		return nil, false, nil
+		return nil, false, conn, nil
 	}
-	info, err := cl.Info()
+	info, err = cl.Info()
 	if err != nil {
-		return nil, true, err
+		return nil, true, false, err
 	}
-	return info, true, nil
+	return info, true, false, nil
 }
 
 func (s *Service) Databases() ([]string, error) {

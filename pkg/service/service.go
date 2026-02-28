@@ -18,10 +18,11 @@ var (
 // Service holds all shared state and provides business logic methods.
 // Methods are namespaced by the file they live in (connection.go, schema.go, etc.).
 type Service struct {
-	mu      sync.RWMutex
-	client  *client.Client
-	Repo    *repository.Repository
-	Version string
+	mu         sync.RWMutex
+	client     *client.Client
+	connecting bool
+	Repo       *repository.Repository
+	Version    string
 
 	queryMu sync.Mutex
 	running map[string]context.CancelFunc
@@ -39,6 +40,19 @@ func (s *Service) SetClient(cl *client.Client) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.client = cl
+	s.connecting = false
+}
+
+func (s *Service) SetConnecting(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.connecting = v
+}
+
+func (s *Service) IsConnecting() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.connecting
 }
 
 func (s *Service) GetClient() *client.Client {

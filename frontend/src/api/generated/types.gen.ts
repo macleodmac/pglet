@@ -27,6 +27,7 @@ export type ConnectionInfo = {
     database: string;
     version: string;
     connected?: boolean;
+    connecting?: boolean;
 };
 
 export type AppInfo = {

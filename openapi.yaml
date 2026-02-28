@@ -646,6 +646,8 @@ components:
           type: string
         connected:
           type: boolean
+        connecting:
+          type: boolean
 
     AppInfo:
       type: object

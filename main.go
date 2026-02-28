@@ -233,16 +233,20 @@ func main() {
 	svc := service.New(repo, getVersion())
 	server := api.NewServer(svc)
 
-	// Auto-connect if URL provided
+	// Auto-connect in background so the UI is available immediately
 	connURL := buildConnectionURL(cfg)
 	if connURL != "" {
-		cl, err := client.New(connURL)
-		if err != nil {
-			slog.Warn("failed to connect", "err", err)
-		} else {
-			svc.SetClient(cl)
-			slog.Debug("connected", "database", cl.Database(), "elapsed", time.Since(start))
-		}
+		svc.SetConnecting(true)
+		go func() {
+			cl, err := client.New(connURL)
+			if err != nil {
+				slog.Warn("failed to connect", "err", err)
+				svc.SetConnecting(false)
+				return
+			}
+			svc.SetClient(cl) // also clears connecting
+			slog.Info("connected", "database", cl.Database(), "elapsed", time.Since(start))
+		}()
 	}
 
 	// Load OpenAPI spec for request validation
