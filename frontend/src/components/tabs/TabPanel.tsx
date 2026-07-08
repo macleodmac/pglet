@@ -9,7 +9,16 @@ import { AiChatPanel } from '../ai/AiChatPanel'
 
 import { useTabStore } from '../../stores/tabs'
 import { useConnectionStore } from '../../stores/connection'
-import { useRunQuery, useExplainQuery, useCancelQuery, useAiGenerate, useAiSuggestions } from '../../api/queries'
+import {
+  useRunQuery,
+  useExplainQuery,
+  useCancelQuery,
+  useAiGenerate,
+  useAiSuggestions,
+  useBeginTransaction,
+  useCommitTransaction,
+  useRollbackTransaction,
+} from '../../api/queries'
 import { autoNameTab } from '../../api/queries'
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from 'react'
 
@@ -48,6 +57,9 @@ export function TabPanel({ tab }: { tab: Tab }) {
   const runQuery = useRunQuery()
   const explainQuery = useExplainQuery()
   const cancelQuery = useCancelQuery()
+  const beginTx = useBeginTransaction()
+  const commitTx = useCommitTransaction()
+  const rollbackTx = useRollbackTransaction()
   const aiGenerate = useAiGenerate()
   const aiSuggestions = useAiSuggestions()
   const database = useConnectionStore((s) => s.info?.database ?? '')
@@ -66,6 +78,9 @@ export function TabPanel({ tab }: { tab: Tab }) {
           onSuccess: (data) => {
             setResult(data)
             setIsRunning(false)
+            // Keep the tab's transaction indicator in sync (a query can open or
+            // abort a transaction, e.g. an error inside one leaves it open).
+            updateTab(tab.id, { inTransaction: !!data.in_transaction })
             // Auto-name tab on first successful run (if not manually renamed and not already AI-named)
             if (!tab.userRenamed && !tab.aiRenamed && !data.error) {
               updateTab(tab.id, { aiRenamed: true })
@@ -119,6 +134,26 @@ export function TabPanel({ tab }: { tab: Tab }) {
   const handleCancel = useCallback(() => {
     cancelQuery.mutate(tab.id)
   }, [tab.id, cancelQuery])
+
+  const handleBegin = useCallback(() => {
+    beginTx.mutate(tab.id, {
+      onSuccess: (data) => updateTab(tab.id, { inTransaction: data.in_transaction }),
+    })
+  }, [tab.id, beginTx, updateTab])
+
+  const handleCommit = useCallback(() => {
+    commitTx.mutate(tab.id, {
+      onSuccess: (data) => updateTab(tab.id, { inTransaction: data.in_transaction }),
+    })
+  }, [tab.id, commitTx, updateTab])
+
+  const handleRollback = useCallback(() => {
+    rollbackTx.mutate(tab.id, {
+      onSuccess: (data) => updateTab(tab.id, { inTransaction: data.in_transaction }),
+    })
+  }, [tab.id, rollbackTx, updateTab])
+
+  const txPending = beginTx.isPending || commitTx.isPending || rollbackTx.isPending
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -266,6 +301,15 @@ export function TabPanel({ tab }: { tab: Tab }) {
                   Explain
                 </button>
 
+                <span className="mx-0.5 h-3.5 w-px bg-surface-300 dark:bg-surface-700" />
+                <TransactionControls
+                  inTransaction={!!tab.inTransaction}
+                  disabled={isRunning || txPending}
+                  onBegin={handleBegin}
+                  onCommit={handleCommit}
+                  onRollback={handleRollback}
+                />
+
                 {/* Center: result stats */}
                 {result && !result.error && !isExplainResult(result.columns) && (
                   <span className="ml-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
@@ -407,6 +451,15 @@ export function TabPanel({ tab }: { tab: Tab }) {
                 Explain
               </button>
 
+              <span className="mx-0.5 h-3.5 w-px bg-surface-300 dark:bg-surface-700" />
+              <TransactionControls
+                inTransaction={!!tab.inTransaction}
+                disabled={isRunning || txPending}
+                onBegin={handleBegin}
+                onCommit={handleCommit}
+                onRollback={handleRollback}
+              />
+
               {/* Center: result stats */}
               {result && !result.error && !isExplainResult(result.columns) && (
                 <span className="ml-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
@@ -490,5 +543,69 @@ export function TabPanel({ tab }: { tab: Tab }) {
       )}
 
     </div>
+  )
+}
+
+const txButtonBase =
+  'flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium disabled:opacity-50'
+
+function TransactionControls({
+  inTransaction,
+  disabled,
+  onBegin,
+  onCommit,
+  onRollback,
+}: {
+  inTransaction: boolean
+  disabled: boolean
+  onBegin: () => void
+  onCommit: () => void
+  onRollback: () => void
+}) {
+  if (!inTransaction) {
+    return (
+      <button
+        type="button"
+        onClick={onBegin}
+        disabled={disabled}
+        className={`${txButtonBase} border-surface-300 text-gray-700 hover:bg-surface-100 dark:border-surface-700 dark:text-gray-300 dark:hover:bg-surface-800`}
+        title="Begin a transaction (BEGIN)"
+      >
+        <Icon name="code-branch" className="h-3 w-3" />
+        Begin
+      </button>
+    )
+  }
+
+  return (
+    <>
+      <span
+        className="flex items-center gap-1.5 rounded bg-amber-400/15 px-2 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+        title="This tab has an open transaction"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        In transaction
+      </span>
+      <button
+        type="button"
+        onClick={onCommit}
+        disabled={disabled}
+        className={`${txButtonBase} border-success/40 text-success hover:bg-success/10`}
+        title="Commit the transaction (COMMIT)"
+      >
+        <Icon name="check" className="h-3 w-3" />
+        Commit
+      </button>
+      <button
+        type="button"
+        onClick={onRollback}
+        disabled={disabled}
+        className={`${txButtonBase} border-danger/40 text-danger hover:bg-danger/10`}
+        title="Roll back the transaction (ROLLBACK)"
+      >
+        <Icon name="rotate-left" className="h-3 w-3" />
+        Rollback
+      </button>
+    </>
   )
 }

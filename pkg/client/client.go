@@ -537,6 +537,32 @@ func (c *Client) QueryWithContext(ctx context.Context, query string) (*QueryResu
 	return c.queryContext(ctx, query)
 }
 
+// Tx is a database transaction pinned to a single connection. Queries run
+// through it stay in the same session until Commit or Rollback.
+type Tx struct {
+	tx *sql.Tx
+}
+
+// Begin starts a new transaction on a dedicated connection from the pool.
+func (c *Client) Begin(ctx context.Context) (*Tx, error) {
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{tx: tx}, nil
+}
+
+// QueryWithContext runs a query inside the transaction.
+func (t *Tx) QueryWithContext(ctx context.Context, query string) (*QueryResult, error) {
+	return runQuery(ctx, t.tx, query)
+}
+
+// Commit commits the transaction.
+func (t *Tx) Commit() error { return t.tx.Commit() }
+
+// Rollback aborts the transaction.
+func (t *Tx) Rollback() error { return t.tx.Rollback() }
+
 func (c *Client) TablesStats() (*QueryResult, error) {
 	return c.queryContext(context.Background(), `
 		SELECT
@@ -594,10 +620,21 @@ func (c *Client) ServerSettings() (*QueryResult, error) {
 		ORDER BY name`)
 }
 
-// queryContext executes a query and returns columns, types, and rows.
+// querier is satisfied by both *sql.DB and *sql.Tx, letting queries run either
+// against the shared pool or inside a pinned transaction.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// queryContext executes a query against the shared pool.
 func (c *Client) queryContext(ctx context.Context, query string) (*QueryResult, error) {
+	return runQuery(ctx, c.db, query)
+}
+
+// runQuery executes a query against any querier and returns columns, types, and rows.
+func runQuery(ctx context.Context, q querier, query string) (*QueryResult, error) {
 	start := time.Now()
-	rows, err := c.db.QueryContext(ctx, query)
+	rows, err := q.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}

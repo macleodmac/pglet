@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { formatDialect } from '@avallete/sql-formatter/lite'
 import { postgresql } from '@avallete/sql-formatter/languages/postgresql'
-import { getTabState, saveTabState } from '../api/client'
+import { getTabState, saveTabState, rollbackTransaction } from '../api/client'
 
 function formatSql(sql: string): string {
   if (!sql.trim()) return sql
@@ -38,6 +38,8 @@ export interface Tab {
   aiCurrentTurnIndex?: number
   aiPrompt?: string
   aiError?: string | null
+  /** True while the tab holds an open server-side transaction (not persisted) */
+  inTransaction?: boolean
 }
 
 interface TabState {
@@ -230,6 +232,12 @@ export const useTabStore = create<TabState>((set, get) => ({
   },
 
   closeTab: (id: string) => {
+    // Roll back any open transaction owned by the closing tab so its pinned
+    // connection is released on the server.
+    const closing = get().tabs.find((t) => t.id === id)
+    if (closing?.inTransaction) {
+      rollbackTransaction({ body: { tab_id: id } }).catch(() => {})
+    }
     set((s) => {
       const tabs = s.tabs.filter((t) => t.id !== id)
       if (tabs.length === 0) {
@@ -312,7 +320,7 @@ function serializeForSave(state: { tabs: Tab[]; activeTabId: string }): string {
   const payload = {
     tabs: state.tabs
       .filter((t) => !t.preview)
-      .map(({ aiPrompt, aiError, preview, ...rest }) => rest),
+      .map(({ aiPrompt, aiError, preview, inTransaction, ...rest }) => rest),
     activeTabId: state.activeTabId,
   }
   return JSON.stringify(payload)

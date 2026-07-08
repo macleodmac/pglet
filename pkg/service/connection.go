@@ -16,6 +16,7 @@ func (s *Service) Connect(url string) (*client.ConnectionInfo, error) {
 }
 
 func (s *Service) Disconnect() {
+	s.rollbackAllTransactions()
 	s.SwapClient(nil)
 }
 
@@ -28,6 +29,7 @@ func (s *Service) SwitchDatabase(database string) (*client.ConnectionInfo, error
 	if err != nil {
 		return nil, err
 	}
+	s.rollbackAllTransactions()
 	s.SwapClient(newClient)
 	info, err := newClient.Info()
 	if err != nil {

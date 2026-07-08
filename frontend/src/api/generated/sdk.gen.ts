@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
+import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -158,6 +158,42 @@ export const analyzeQuery = <ThrowOnError extends boolean = false>(options: Opti
  */
 export const cancelQuery = <ThrowOnError extends boolean = false>(options: Options<CancelQueryData, ThrowOnError>) => (options.client ?? client).post<CancelQueryResponses, unknown, ThrowOnError>({
     url: '/api/query/cancel',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Begin a transaction for a tab
+ */
+export const beginTransaction = <ThrowOnError extends boolean = false>(options: Options<BeginTransactionData, ThrowOnError>) => (options.client ?? client).post<BeginTransactionResponses, unknown, ThrowOnError>({
+    url: '/api/transaction/begin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Commit a tab's transaction
+ */
+export const commitTransaction = <ThrowOnError extends boolean = false>(options: Options<CommitTransactionData, ThrowOnError>) => (options.client ?? client).post<CommitTransactionResponses, unknown, ThrowOnError>({
+    url: '/api/transaction/commit',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Roll back a tab's transaction
+ */
+export const rollbackTransaction = <ThrowOnError extends boolean = false>(options: Options<RollbackTransactionData, ThrowOnError>) => (options.client ?? client).post<RollbackTransactionResponses, unknown, ThrowOnError>({
+    url: '/api/transaction/rollback',
     ...options,
     headers: {
         'Content-Type': 'application/json',

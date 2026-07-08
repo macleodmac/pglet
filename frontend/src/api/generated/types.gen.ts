@@ -92,6 +92,10 @@ export type QueryResult = {
     row_count: number;
     duration_ms: number;
     error?: string;
+    /**
+     * Whether the tab has an open transaction after this query.
+     */
+    in_transaction?: boolean;
 };
 
 export type TableRowsResult = {
@@ -110,6 +114,14 @@ export type QueryRequest = {
 
 export type CancelRequest = {
     tab_id: string;
+};
+
+export type TransactionRequest = {
+    tab_id: string;
+};
+
+export type TransactionStatus = {
+    in_transaction: boolean;
 };
 
 export type ExportRequest = {
@@ -574,6 +586,54 @@ export type CancelQueryResponses = {
 };
 
 export type CancelQueryResponse = CancelQueryResponses[keyof CancelQueryResponses];
+
+export type BeginTransactionData = {
+    body: TransactionRequest;
+    path?: never;
+    query?: never;
+    url: '/api/transaction/begin';
+};
+
+export type BeginTransactionResponses = {
+    /**
+     * Transaction status
+     */
+    200: TransactionStatus;
+};
+
+export type BeginTransactionResponse = BeginTransactionResponses[keyof BeginTransactionResponses];
+
+export type CommitTransactionData = {
+    body: TransactionRequest;
+    path?: never;
+    query?: never;
+    url: '/api/transaction/commit';
+};
+
+export type CommitTransactionResponses = {
+    /**
+     * Transaction status
+     */
+    200: TransactionStatus;
+};
+
+export type CommitTransactionResponse = CommitTransactionResponses[keyof CommitTransactionResponses];
+
+export type RollbackTransactionData = {
+    body: TransactionRequest;
+    path?: never;
+    query?: never;
+    url: '/api/transaction/rollback';
+};
+
+export type RollbackTransactionResponses = {
+    /**
+     * Transaction status
+     */
+    200: TransactionStatus;
+};
+
+export type RollbackTransactionResponse = RollbackTransactionResponses[keyof RollbackTransactionResponses];
 
 export type ExportQueryData = {
     body: ExportRequest;

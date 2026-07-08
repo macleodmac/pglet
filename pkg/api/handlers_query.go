@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -15,6 +16,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query)
+	inTx := s.svc.InTransaction(req.TabId)
 	if err != nil {
 		var qe *service.QueryError
 		if errors.As(err, &qe) {
@@ -23,7 +25,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, QueryResult{
 				Columns: []string{}, ColumnTypes: []string{},
 				Rows: [][]CellValue{}, RowCount: 0, DurationMs: 0,
-				Error: &errMsg,
+				Error: &errMsg, InTransaction: &inTx,
 			})
 			return
 		}
@@ -34,8 +36,43 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, QueryResult{
 		Columns: result.Columns, ColumnTypes: result.ColumnTypes,
 		Rows: toNullableRows(result.Rows), RowCount: result.RowCount,
-		DurationMs: result.DurationMs,
+		DurationMs: result.DurationMs, InTransaction: &inTx,
 	})
+}
+
+func (s *Server) BeginTransaction(w http.ResponseWriter, r *http.Request) {
+	s.txAction(w, r, func(_ context.Context, tabID string) error {
+		return s.svc.BeginTransaction(tabID)
+	})
+}
+
+func (s *Server) CommitTransaction(w http.ResponseWriter, r *http.Request) {
+	s.txAction(w, r, func(_ context.Context, tabID string) error {
+		return s.svc.CommitTransaction(tabID)
+	})
+}
+
+func (s *Server) RollbackTransaction(w http.ResponseWriter, r *http.Request) {
+	s.txAction(w, r, func(_ context.Context, tabID string) error {
+		return s.svc.RollbackTransaction(tabID)
+	})
+}
+
+// txAction decodes a TransactionRequest, runs the given transaction operation,
+// and returns the resulting transaction status.
+func (s *Server) txAction(w http.ResponseWriter, r *http.Request, action func(context.Context, string) error) {
+	var req TransactionRequest
+	if err := readJSON(r, &req); err != nil {
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	if err := action(r.Context(), req.TabId); err != nil {
+		writeErr(w, svcStatus(err), err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, TransactionStatus{InTransaction: s.svc.InTransaction(req.TabId)})
 }
 
 func (s *Server) ExplainQuery(w http.ResponseWriter, r *http.Request) {
