@@ -19,6 +19,9 @@ import {
   explainQuery,
   analyzeQuery,
   cancelQuery,
+  beginTransaction,
+  commitTransaction,
+  rollbackTransaction,
   listSavedQueries,
   createSavedQuery,
   updateSavedQuery,
@@ -198,6 +201,31 @@ export function useCancelQuery() {
   return useMutation({
     mutationFn: async (tabId: string) =>
       unwrap(await cancelQuery({ body: { tab_id: tabId } })),
+  })
+}
+
+// Transactions
+export function useBeginTransaction() {
+  return useMutation({
+    mutationFn: async (tabId: string) =>
+      unwrap(await beginTransaction({ body: { tab_id: tabId } })),
+  })
+}
+
+export function useCommitTransaction() {
+  return useMutation({
+    mutationFn: async (tabId: string) =>
+      unwrap(await commitTransaction({ body: { tab_id: tabId } })),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['history'] })
+    },
+  })
+}
+
+export function useRollbackTransaction() {
+  return useMutation({
+    mutationFn: async (tabId: string) =>
+      unwrap(await rollbackTransaction({ body: { tab_id: tabId } })),
   })
 }
 

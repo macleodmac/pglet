@@ -232,7 +232,7 @@ func toNullableRows(rows [][]any) [][]CellValue {
 
 // svcStatus maps service errors to HTTP status codes.
 func svcStatus(err error) int {
-	if errors.Is(err, service.ErrNotConnected) {
+	if errors.Is(err, service.ErrNotConnected) || errors.Is(err, service.ErrNoTransaction) {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError

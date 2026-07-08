@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrNotConnected = errors.New("not connected to database")
-	ErrNoAPIKey     = errors.New("AI API key not configured, set ANTHROPIC_API_KEY environment variable")
+	ErrNotConnected  = errors.New("not connected to database")
+	ErrNoAPIKey      = errors.New("AI API key not configured, set ANTHROPIC_API_KEY environment variable")
+	ErrNoTransaction = errors.New("no open transaction for this tab")
 )
 
 // Service holds all shared state and provides business logic methods.
@@ -25,6 +26,9 @@ type Service struct {
 
 	queryMu sync.Mutex
 	running map[string]context.CancelFunc
+
+	txMu sync.Mutex
+	txns map[string]*client.Tx
 }
 
 func New(repo *repository.Repository, version string) *Service {
@@ -32,6 +36,7 @@ func New(repo *repository.Repository, version string) *Service {
 		Repo:    repo,
 		Version: version,
 		running: make(map[string]context.CancelFunc),
+		txns:    make(map[string]*client.Tx),
 	}
 }
 

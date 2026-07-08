@@ -29,7 +29,14 @@ func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.Qu
 		cancel()
 	}()
 
-	result, err := cl.QueryWithContext(ctx, query)
+	// When the tab has an open transaction, run the query inside it so all
+	// statements share the same session until commit/rollback.
+	var result *client.QueryResult
+	if tx, ok := s.getTx(tabID); ok {
+		result, err = tx.QueryWithContext(ctx, query)
+	} else {
+		result, err = cl.QueryWithContext(ctx, query)
+	}
 
 	entry := repository.HistoryEntry{SQL: query, Database: cl.Database()}
 	if err != nil {
