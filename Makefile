@@ -32,18 +32,18 @@ generate-ts:
 	cd frontend && npx @hey-api/openapi-ts -i ../openapi.yaml -o src/api/generated
 
 lint:
-	revive -config revive.toml -exclude pkg/api/openapi.gen.go ./...
+	revive -config revive.toml -exclude internal/api/openapi.gen.go ./...
 
 deps:
 	cd frontend && pnpm install
 	go mod tidy
 
 db-up:
-	docker compose up -d postgres
+	docker compose -f dev/docker-compose.yml up -d postgres
 
 db-down:
-	docker compose down
+	docker compose -f dev/docker-compose.yml down
 
 db-reset:
-	docker compose down -v
-	docker compose up -d postgres
+	docker compose -f dev/docker-compose.yml down -v
+	docker compose -f dev/docker-compose.yml up -d postgres

@@ -82,7 +82,10 @@ make generate     # Regenerate Go + TypeScript from openapi.yaml
 make build        # Build production binary
 make deps         # Install all dependencies
 make clean        # Remove build artifacts
+make db-up        # Start the dev Postgres (dev/docker-compose.yml, seeded from dev/seed.sql)
 ```
+
+Component stories use [Ladle](https://ladle.dev): `cd frontend && pnpm ladle`.
 
 Use `pnpm`, not npm.
 
@@ -92,19 +95,19 @@ The API is defined in `openapi.yaml` (OpenAPI 3.0.3). To add or modify endpoints
 
 1. Edit `openapi.yaml`
 2. Run `make generate` to regenerate Go types/routing and TypeScript SDK
-3. Implement the handler in `pkg/api/handlers_<domain>.go`
-4. Add business logic in `pkg/service/<domain>.go`
+3. Implement the handler in `internal/api/handlers_<domain>.go`
+4. Add business logic in `internal/service/<domain>.go`
 5. Add the TanStack Query hook in `frontend/src/api/queries.ts`
 
 ## Architecture
 
 ```
 openapi.yaml (source of truth)
-  ├─► oapi-codegen  → pkg/api/openapi.gen.go   (types + ServerInterface + routing)
+  ├─► oapi-codegen  → internal/api/openapi.gen.go   (types + ServerInterface + routing)
   └─► hey-api       → frontend/src/api/generated/ (TS types + SDK)
 
 Frontend (React 19, Vite 7, Tailwind v4, TanStack Query v5, Monaco, Zustand)
-  → pnpm build → frontend/dist/
+  → pnpm build → static/dist/
   → go:embed   → single Go binary
 ```
 
@@ -112,11 +115,11 @@ Frontend (React 19, Vite 7, Tailwind v4, TanStack Query v5, Monaco, Zustand)
 
 | Layer | Directory | Purpose |
 |-------|-----------|---------|
-| HTTP | `pkg/api/` | Thin handlers implementing `ServerInterface`. Parse request, call service, write response. |
-| Service | `pkg/service/` | All business logic. Single `Service` struct with methods namespaced by file. |
-| Client | `pkg/client/` | PostgreSQL wrapper around `lib/pq`. Schema introspection, query execution. |
-| Repository | `pkg/repository/` | bbolt-based persistence for saved queries, history, settings, tab state. |
-| AI | `pkg/ai/` | Anthropic Claude API client for SQL generation. |
+| HTTP | `internal/api/` | Thin handlers implementing `ServerInterface`. Parse request, call service, write response. |
+| Service | `internal/service/` | All business logic. Single `Service` struct with methods namespaced by file. |
+| Client | `internal/client/` | PostgreSQL wrapper around `lib/pq`. Schema introspection, query execution. |
+| Repository | `internal/repository/` | bbolt-based persistence for saved queries, history, settings, tab state. |
+| AI | `internal/ai/` | Anthropic Claude API client for SQL generation. |
 
 Middleware chain (net/http):
 - OpenAPI request validation via `oapi-codegen/nethttp-middleware`
@@ -129,7 +132,7 @@ Middleware chain (net/http):
 | Directory | Purpose |
 |-----------|---------|
 | `frontend/src/api/` | Generated SDK + TanStack Query hooks (`queries.ts`) |
-| `frontend/src/components/` | React components: `layout/`, `editor/`, `tabs/`, `results/`, `ai/`, `saved-queries/` |
+| `frontend/src/components/` | React components: `layout/`, `editor/`, `tabs/`, `results/`, `browser/`, `ai/`, `saved-queries/`, `ui/` |
 | `frontend/src/stores/` | Zustand stores: `tabs.ts`, `connection.ts`, `theme.ts` |
 
 ## AI Features

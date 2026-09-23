@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CellDetail } from './CellDetail'
-import { ContextMenu } from '../shared/ContextMenu'
+import { ContextMenu } from '../ui/ContextMenu'
 
 interface DataGridProps {
   columns: string[]

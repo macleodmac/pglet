@@ -1,28 +1,24 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Story, StoryDefault } from '@ladle/react'
 import { JsonbViewer } from './JsonbViewer'
 
-const meta: Meta<typeof JsonbViewer> = {
+export default {
   title: 'Results/JsonbViewer',
-  component: JsonbViewer,
-}
+} satisfies StoryDefault
 
-export default meta
-type Story = StoryObj<typeof JsonbViewer>
-
-export const SimpleObject: Story = {
-  args: {
-    data: {
+export const SimpleObject: Story = () => (
+  <JsonbViewer
+    data={{
       name: 'Alice',
       age: 30,
       active: true,
       email: null,
-    },
-  },
-}
+    }}
+  />
+)
 
-export const NestedObject: Story = {
-  args: {
-    data: {
+export const NestedObject: Story = () => (
+  <JsonbViewer
+    data={{
       user: {
         id: 1,
         profile: {
@@ -39,23 +35,23 @@ export const NestedObject: Story = {
         created: '2024-01-15T10:30:00Z',
         tags: ['premium', 'beta-tester'],
       },
-    },
-  },
-}
+    }}
+  />
+)
 
-export const ArrayData: Story = {
-  args: {
-    data: [
+export const ArrayData: Story = () => (
+  <JsonbViewer
+    data={[
       { id: 1, name: 'Item 1', price: 9.99 },
       { id: 2, name: 'Item 2', price: 19.99 },
       { id: 3, name: 'Item 3', price: 29.99 },
-    ],
-  },
-}
+    ]}
+  />
+)
 
-export const MixedTypes: Story = {
-  args: {
-    data: {
+export const MixedTypes: Story = () => (
+  <JsonbViewer
+    data={{
       string: 'hello world',
       number: 42,
       float: 3.14,
@@ -65,9 +61,9 @@ export const MixedTypes: Story = {
       empty_array: [],
       empty_object: {},
       nested_array: [1, 'two', true, null, [5, 6]],
-    },
-  },
-}
+    }}
+  />
+)
 
 const largePayloadData = {
   users: Array.from({ length: 20 }, (_, i) => ({
@@ -82,16 +78,8 @@ const largePayloadData = {
   })),
 }
 
-export const LargePayload: Story = {
-  args: {
-    data: largePayloadData,
-    initialExpanded: 1,
-  },
-}
+export const LargePayload: Story = () => <JsonbViewer data={largePayloadData} initialExpanded={1} />
 
-export const CollapsedByDefault: Story = {
-  args: {
-    data: { a: { b: { c: { d: 'deep' } } } },
-    initialExpanded: 0,
-  },
-}
+export const CollapsedByDefault: Story = () => (
+  <JsonbViewer data={{ a: { b: { c: { d: 'deep' } } } }} initialExpanded={0} />
+)

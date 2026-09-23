@@ -1,5 +1,5 @@
 import type * as monaco from 'monaco-editor'
-import { queryClient } from '../../queryClient'
+import { queryClient } from '../../api/queryClient'
 import type { SchemaGroup, SchemaObject } from '../../api/generated'
 
 const PG_KEYWORDS = [

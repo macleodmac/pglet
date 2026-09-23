@@ -1,99 +1,57 @@
-import type { Meta, StoryObj } from '@storybook/react'
-
+import type { Story, StoryDefault } from '@ladle/react'
 import { CellDetail } from './CellDetail'
 
-const meta: Meta<typeof CellDetail> = {
+export default {
   title: 'Results/CellDetail',
-  component: CellDetail,
-  parameters: {
-    layout: 'fullscreen',
-  },
-}
+} satisfies StoryDefault
 
-export default meta
-type Story = StoryObj<typeof CellDetail>
+const noop = () => {}
 
-export const TextValue: Story = {
-  args: {
-    column: 'email',
-    columnType: 'TEXT',
-    value: 'alice@example.com',
-    onClose: () => {},
-  },
-}
+export const TextValue: Story = () => (
+  <CellDetail column="email" columnType="TEXT" value="alice@example.com" onClose={noop} />
+)
 
-export const NullValue: Story = {
-  args: {
-    column: 'bio',
-    columnType: 'TEXT',
-    value: null,
-    onClose: () => {},
-  },
-}
+export const NullValue: Story = () => <CellDetail column="bio" columnType="TEXT" value={null} onClose={noop} />
 
-export const LongText: Story = {
-  args: {
-    column: 'description',
-    columnType: 'TEXT',
-    value: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(20),
-    onClose: () => {},
-  },
-}
+export const LongText: Story = () => (
+  <CellDetail
+    column="description"
+    columnType="TEXT"
+    value={'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(20)}
+    onClose={noop}
+  />
+)
 
-export const JsonValue: Story = {
-  args: {
-    column: 'metadata',
-    columnType: 'JSONB',
-    value: JSON.stringify({
+export const JsonValue: Story = () => (
+  <CellDetail
+    column="metadata"
+    columnType="JSONB"
+    value={JSON.stringify({
       role: 'admin',
       permissions: ['read', 'write', 'delete'],
       profile: { theme: 'dark', timezone: 'UTC' },
-    }),
-    onClose: () => {},
-  },
-}
+    })}
+    onClose={noop}
+  />
+)
 
-export const JsonArray: Story = {
-  args: {
-    column: 'tags',
-    columnType: 'JSONB',
-    value: JSON.stringify(['postgres', 'database', 'sql', 'admin']),
-    onClose: () => {},
-  },
-}
+export const JsonArray: Story = () => (
+  <CellDetail
+    column="tags"
+    columnType="JSONB"
+    value={JSON.stringify(['postgres', 'database', 'sql', 'admin'])}
+    onClose={noop}
+  />
+)
 
-export const EmptyString: Story = {
-  args: {
-    column: 'notes',
-    columnType: 'TEXT',
-    value: '',
-    onClose: () => {},
-  },
-}
+export const EmptyString: Story = () => <CellDetail column="notes" columnType="TEXT" value="" onClose={noop} />
 
-export const Uuid: Story = {
-  args: {
-    column: 'id',
-    columnType: 'UUID',
-    value: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-    onClose: () => {},
-  },
-}
+export const Uuid: Story = () => (
+  <CellDetail column="id" columnType="UUID" value="a1b2c3d4-e5f6-7890-abcd-ef1234567890" onClose={noop} />
+)
 
-export const Timestamp: Story = {
-  args: {
-    column: 'created_at',
-    columnType: 'TIMESTAMPTZ',
-    value: '2025-01-15T09:30:00.000Z',
-    onClose: () => {},
-  },
-}
+export const Timestamp: Story = () => (
+  <CellDetail column="created_at" columnType="TIMESTAMPTZ" value="2025-01-15T09:30:00.000Z" onClose={noop} />
+)
 
-export const Integer: Story = {
-  args: {
-    column: 'order_count',
-    columnType: 'INT4',
-    value: '42',
-    onClose: () => {},
-  },
-}
+export const Integer: Story = () => <CellDetail column="order_count" columnType="INT4" value="42" onClose={noop} />

@@ -96,6 +96,14 @@ export type QueryResult = {
      * Whether the tab has an open transaction after this query.
      */
     in_transaction?: boolean;
+    /**
+     * Verb of the executed command, e.g. SELECT, UPDATE, CREATE TABLE.
+     */
+    command_tag?: string;
+    /**
+     * Rows inserted/updated/deleted/returned; null for commands that report no count.
+     */
+    rows_affected?: number | null;
 };
 
 export type TableRowsResult = {

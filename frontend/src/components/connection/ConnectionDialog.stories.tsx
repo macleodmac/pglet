@@ -1,27 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { Story, StoryDefault } from '@ladle/react'
 import { ConnectionDialog } from './ConnectionDialog'
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false } },
-})
-
-const meta: Meta<typeof ConnectionDialog> = {
+export default {
   title: 'Connection/ConnectionDialog',
-  component: ConnectionDialog,
-  decorators: [
-    (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <Story />
-      </QueryClientProvider>
-    ),
-  ],
-  parameters: {
-    layout: 'fullscreen',
-  },
-}
+} satisfies StoryDefault
 
-export default meta
-type Story = StoryObj<typeof ConnectionDialog>
-
-export const Default: Story = {}
+export const Default: Story = () => <ConnectionDialog />

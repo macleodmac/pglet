@@ -1,32 +1,21 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Story, StoryDefault } from '@ladle/react'
 import { TabBar } from './TabBar'
 import { useTabStore } from '../../stores/tabs'
 import { useEffect } from 'react'
 
-const meta: Meta<typeof TabBar> = {
+export default {
   title: 'Tabs/TabBar',
-  component: TabBar,
-  parameters: {
-    layout: 'fullscreen',
-  },
-}
+} satisfies StoryDefault
 
-export default meta
-type Story = StoryObj<typeof TabBar>
+export const SingleTab: Story = () => <TabBar />
 
-export const SingleTab: Story = {}
-
-export const MultipleTabs: Story = {
-  decorators: [
-    (Story) => {
-      const addQueryTab = useTabStore((s) => s.addQueryTab)
-      const addTableTab = useTabStore((s) => s.addTableTab)
-      useEffect(() => {
-        addQueryTab()
-        addTableTab('users')
-        addTableTab('orders')
-      }, [])
-      return <Story />
-    },
-  ],
+export const MultipleTabs: Story = () => {
+  const addQueryTab = useTabStore((s) => s.addQueryTab)
+  const addTableTab = useTabStore((s) => s.addTableTab)
+  useEffect(() => {
+    addQueryTab()
+    addTableTab('users')
+    addTableTab('orders')
+  }, [addQueryTab, addTableTab])
+  return <TabBar />
 }

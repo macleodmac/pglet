@@ -9,9 +9,9 @@ pglet-stripped
 # Frontend
 frontend/node_modules/
 frontend/dist/
-frontend/storybook-static/
+frontend/ladle-static/
+frontend/bundle-stats.html
 frontend/tsconfig.tsbuildinfo
-frontend/debug-storybook.log
 
 # Embedded frontend build output (committed for go install support)
 # static/dist/

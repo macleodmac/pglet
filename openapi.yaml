@@ -852,6 +852,14 @@ components:
         in_transaction:
           type: boolean
           description: Whether the tab has an open transaction after this query.
+        command_tag:
+          type: string
+          description: Verb of the executed command, e.g. SELECT, UPDATE, CREATE TABLE.
+        rows_affected:
+          type: integer
+          format: int64
+          nullable: true
+          description: Rows inserted/updated/deleted/returned; null for commands that report no count.
 
     TableRowsResult:
       type: object

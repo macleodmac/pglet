@@ -1,5 +1,5 @@
 import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query'
-import { queryClient } from '../queryClient'
+import { queryClient } from './queryClient'
 import {
   connect,
   disconnect,

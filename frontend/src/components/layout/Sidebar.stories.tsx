@@ -1,5 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Story, StoryDefault } from '@ladle/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Sidebar } from './Sidebar'
 import type { SchemaGroup } from '../../api/generated'
 
@@ -44,54 +45,33 @@ const mockObjects: Record<string, SchemaGroup> = {
   },
 }
 
-function createMockQueryClient() {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  qc.setQueryData(['objects'], mockObjects)
-  return qc
+function SidebarWithClient({ createClient }: { createClient: () => QueryClient }) {
+  const [client] = useState(createClient)
+  return (
+    <QueryClientProvider client={client}>
+      <div style={{ height: '600px', display: 'flex' }}>
+        <Sidebar />
+      </div>
+    </QueryClientProvider>
+  )
 }
 
-const meta: Meta<typeof Sidebar> = {
+export default {
   title: 'Layout/Sidebar',
-  component: Sidebar,
-  parameters: {
-    layout: 'fullscreen',
-  },
-  decorators: [
-    (Story) => (
-      <QueryClientProvider client={createMockQueryClient()}>
-        <div style={{ height: '600px', display: 'flex' }}>
-          <Story />
-        </div>
-      </QueryClientProvider>
-    ),
-  ],
-}
+} satisfies StoryDefault
 
-export default meta
-type Story = StoryObj<typeof Sidebar>
+export const WithData: Story = () => (
+  <SidebarWithClient
+    createClient={() => {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      qc.setQueryData(['objects'], mockObjects)
+      return qc
+    }}
+  />
+)
 
-export const WithData: Story = {}
-
-export const Loading: Story = {
-  decorators: [
-    (Story) => {
-      const qc = new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: false,
-            enabled: false,
-          },
-        },
-      })
-      return (
-        <QueryClientProvider client={qc}>
-          <div style={{ height: '600px', display: 'flex' }}>
-            <Story />
-          </div>
-        </QueryClientProvider>
-      )
-    },
-  ],
-}
+export const Loading: Story = () => (
+  <SidebarWithClient
+    createClient={() => new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } })}
+  />
+)

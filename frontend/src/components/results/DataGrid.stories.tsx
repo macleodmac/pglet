@@ -1,23 +1,16 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Story, StoryDefault } from '@ladle/react'
 import { DataGrid } from './DataGrid'
 
-const meta: Meta<typeof DataGrid> = {
+export default {
   title: 'Results/DataGrid',
-  component: DataGrid,
-  parameters: {
-    layout: 'fullscreen',
-  },
   decorators: [
-    (Story) => (
+    (Component) => (
       <div style={{ height: '500px' }}>
-        <Story />
+        <Component />
       </div>
     ),
   ],
-}
-
-export default meta
-type Story = StoryObj<typeof DataGrid>
+} satisfies StoryDefault
 
 const sampleColumns = ['id', 'name', 'email', 'created_at', 'metadata']
 const sampleTypes = ['INT4', 'TEXT', 'TEXT', 'TIMESTAMPTZ', 'JSONB']
@@ -32,49 +25,33 @@ function generateRows(count: number): (string | null)[][] {
   ])
 }
 
-export const Empty: Story = {
-  args: {
-    columns: [],
-    columnTypes: [],
-    rows: [],
-  },
-}
+export const Empty: Story = () => <DataGrid columns={[]} columnTypes={[]} rows={[]} />
 
-export const FewRows: Story = {
-  args: {
-    columns: sampleColumns,
-    columnTypes: sampleTypes,
-    rows: generateRows(5),
-  },
-}
+export const FewRows: Story = () => <DataGrid columns={sampleColumns} columnTypes={sampleTypes} rows={generateRows(5)} />
 
-export const ManyRows: Story = {
-  args: {
-    columns: sampleColumns,
-    columnTypes: sampleTypes,
-    rows: generateRows(1000),
-  },
-}
+export const ManyRows: Story = () => (
+  <DataGrid columns={sampleColumns} columnTypes={sampleTypes} rows={generateRows(1000)} />
+)
 
-export const WithNulls: Story = {
-  args: {
-    columns: ['id', 'name', 'bio', 'avatar_url'],
-    columnTypes: ['INT4', 'TEXT', 'TEXT', 'TEXT'],
-    rows: [
+export const WithNulls: Story = () => (
+  <DataGrid
+    columns={['id', 'name', 'bio', 'avatar_url']}
+    columnTypes={['INT4', 'TEXT', 'TEXT', 'TEXT']}
+    rows={[
       ['1', 'Alice', 'Software engineer', null],
       ['2', 'Bob', null, 'https://example.com/bob.jpg'],
       ['3', null, null, null],
       ['4', 'Diana', 'Designer', 'https://example.com/diana.jpg'],
-    ],
-  },
-}
+    ]}
+  />
+)
 
-export const WideTable: Story = {
-  args: {
-    columns: Array.from({ length: 20 }, (_, i) => `column_${i + 1}`),
-    columnTypes: Array.from({ length: 20 }, () => 'TEXT'),
-    rows: Array.from({ length: 50 }, (_, rowIdx) =>
+export const WideTable: Story = () => (
+  <DataGrid
+    columns={Array.from({ length: 20 }, (_, i) => `column_${i + 1}`)}
+    columnTypes={Array.from({ length: 20 }, () => 'TEXT')}
+    rows={Array.from({ length: 50 }, (_, rowIdx) =>
       Array.from({ length: 20 }, (_, colIdx) => `row${rowIdx + 1}_col${colIdx + 1}`),
-    ),
-  },
-}
+    )}
+  />
+)

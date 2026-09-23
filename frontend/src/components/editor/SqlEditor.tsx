@@ -1,4 +1,4 @@
-import Editor, { type OnMount } from '@monaco-editor/react'
+import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react'
 import { useCallback, useRef, useImperativeHandle, forwardRef } from 'react'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import { formatDialect } from '@avallete/sql-formatter/lite'
@@ -20,6 +20,55 @@ interface SqlEditorProps {
   onRun: (selectedText?: string) => void
   onExplain: () => void
   onSave?: () => void
+}
+
+const handleBeforeMount: BeforeMount = (monaco) => {
+  if (!themesRegistered) {
+    monaco.editor.defineTheme('pglet-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [
+        { token: 'keyword', foreground: '3d7568', fontStyle: 'bold' },
+        { token: 'keyword.sql', foreground: '3d7568', fontStyle: 'bold' },
+        { token: 'operator.sql', foreground: '4f9385' },
+        { token: 'predefined.sql', foreground: '4f9385' },
+        { token: 'string.sql', foreground: 'b45309' },
+        { token: 'number', foreground: 'c2410c' },
+        { token: 'comment', foreground: 'a8a29e', fontStyle: 'italic' },
+      ],
+      colors: {
+        'editor.selectionBackground': '#b1e0d4',
+        'editor.inactiveSelectionBackground': '#d6efe8',
+        'editor.selectionHighlightBackground': '#d6efe880',
+        'editorCursor.foreground': '#4f9385',
+      },
+    })
+    monaco.editor.defineTheme('pglet-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'keyword', foreground: 'b1e0d4', fontStyle: 'bold' },
+        { token: 'keyword.sql', foreground: 'b1e0d4', fontStyle: 'bold' },
+        { token: 'operator.sql', foreground: '92c5b9' },
+        { token: 'predefined.sql', foreground: '92c5b9' },
+        { token: 'string.sql', foreground: 'fcd34d' },
+        { token: 'number', foreground: 'fb923c' },
+        { token: 'comment', foreground: '78716c', fontStyle: 'italic' },
+      ],
+      colors: {
+        'editor.selectionBackground': '#2f5b51',
+        'editor.inactiveSelectionBackground': '#2f5b5180',
+        'editor.selectionHighlightBackground': '#2f5b5160',
+        'editorCursor.foreground': '#b1e0d4',
+      },
+    })
+    themesRegistered = true
+  }
+
+  if (!completionRegistered) {
+    monaco.languages.registerCompletionItemProvider('sql', createCompletionProvider(monaco))
+    completionRegistered = true
+  }
 }
 
 export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
@@ -69,53 +118,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor
-
-      if (!themesRegistered) {
-        monaco.editor.defineTheme('pglet-light', {
-          base: 'vs',
-          inherit: true,
-          rules: [
-            { token: 'keyword', foreground: '3d7568', fontStyle: 'bold' },
-            { token: 'keyword.sql', foreground: '3d7568', fontStyle: 'bold' },
-            { token: 'operator.sql', foreground: '4f9385' },
-            { token: 'predefined.sql', foreground: '4f9385' },
-            { token: 'string.sql', foreground: 'b45309' },
-            { token: 'number', foreground: 'c2410c' },
-            { token: 'comment', foreground: 'a8a29e', fontStyle: 'italic' },
-          ],
-          colors: {
-            'editor.selectionBackground': '#b1e0d4',
-            'editor.inactiveSelectionBackground': '#d6efe8',
-            'editor.selectionHighlightBackground': '#d6efe880',
-            'editorCursor.foreground': '#4f9385',
-          },
-        })
-        monaco.editor.defineTheme('pglet-dark', {
-          base: 'vs-dark',
-          inherit: true,
-          rules: [
-            { token: 'keyword', foreground: 'b1e0d4', fontStyle: 'bold' },
-            { token: 'keyword.sql', foreground: 'b1e0d4', fontStyle: 'bold' },
-            { token: 'operator.sql', foreground: '92c5b9' },
-            { token: 'predefined.sql', foreground: '92c5b9' },
-            { token: 'string.sql', foreground: 'fcd34d' },
-            { token: 'number', foreground: 'fb923c' },
-            { token: 'comment', foreground: '78716c', fontStyle: 'italic' },
-          ],
-          colors: {
-            'editor.selectionBackground': '#2f5b51',
-            'editor.inactiveSelectionBackground': '#2f5b5180',
-            'editor.selectionHighlightBackground': '#2f5b5160',
-            'editorCursor.foreground': '#b1e0d4',
-          },
-        })
-        themesRegistered = true
-      }
-
-      if (!completionRegistered) {
-        monaco.languages.registerCompletionItemProvider('sql', createCompletionProvider(monaco))
-        completionRegistered = true
-      }
 
       // Use addCommand for Cmd+Enter — more reliable than addAction for keybindings
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
@@ -199,6 +201,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       theme={isDark ? 'pglet-dark' : 'pglet-light'}
       value={value}
       onChange={(v) => onChange(v ?? '')}
+      beforeMount={handleBeforeMount}
       onMount={handleMount}
       options={{
         minimap: { enabled: false },

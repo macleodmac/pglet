@@ -1,61 +1,22 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Story, StoryDefault } from '@ladle/react'
 import { Pagination } from './Pagination'
 import { useState } from 'react'
 
-const meta: Meta<typeof Pagination> = {
+export default {
   title: 'Results/Pagination',
-  component: Pagination,
-}
+} satisfies StoryDefault
 
-export default meta
-type Story = StoryObj<typeof Pagination>
+const noop = () => {}
 
-export const FirstPage: Story = {
-  args: {
-    page: 0,
-    pageSize: 100,
-    totalCount: 1542,
-    onPageChange: () => {},
-  },
-}
+export const FirstPage: Story = () => <Pagination page={0} pageSize={100} totalCount={1542} onPageChange={noop} />
 
-export const MiddlePage: Story = {
-  args: {
-    page: 5,
-    pageSize: 100,
-    totalCount: 1542,
-    onPageChange: () => {},
-  },
-}
+export const MiddlePage: Story = () => <Pagination page={5} pageSize={100} totalCount={1542} onPageChange={noop} />
 
-export const LastPage: Story = {
-  args: {
-    page: 15,
-    pageSize: 100,
-    totalCount: 1542,
-    onPageChange: () => {},
-  },
-}
+export const LastPage: Story = () => <Pagination page={15} pageSize={100} totalCount={1542} onPageChange={noop} />
 
-export const SinglePage: Story = {
-  args: {
-    page: 0,
-    pageSize: 100,
-    totalCount: 50,
-    onPageChange: () => {},
-  },
-}
+export const SinglePage: Story = () => <Pagination page={0} pageSize={100} totalCount={50} onPageChange={noop} />
 
-export const Interactive: Story = {
-  render: () => {
-    const [page, setPage] = useState(0)
-    return (
-      <Pagination
-        page={page}
-        pageSize={100}
-        totalCount={2500}
-        onPageChange={setPage}
-      />
-    )
-  },
+export const Interactive: Story = () => {
+  const [page, setPage] = useState(0)
+  return <Pagination page={page} pageSize={100} totalCount={2500} onPageChange={setPage} />
 }

@@ -1,43 +1,30 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { Story, StoryDefault } from '@ladle/react'
 import { StatusBar } from './StatusBar'
 import { useConnectionStore } from '../../stores/connection'
 import { useEffect } from 'react'
 
-const meta: Meta<typeof StatusBar> = {
+export default {
   title: 'Layout/StatusBar',
-  component: StatusBar,
-  parameters: {
-    layout: 'fullscreen',
-  },
+} satisfies StoryDefault
+
+export const Disconnected: Story = () => {
+  const setDisconnected = useConnectionStore((s) => s.setDisconnected)
+  useEffect(() => {
+    setDisconnected()
+  }, [setDisconnected])
+  return <StatusBar />
 }
 
-export default meta
-type Story = StoryObj<typeof StatusBar>
-
-export const Disconnected: Story = {
-  decorators: [
-    (Story) => {
-      const setDisconnected = useConnectionStore((s) => s.setDisconnected)
-      useEffect(() => { setDisconnected() }, [])
-      return <Story />
-    },
-  ],
-}
-
-export const Connected: Story = {
-  decorators: [
-    (Story) => {
-      const setConnected = useConnectionStore((s) => s.setConnected)
-      useEffect(() => {
-        setConnected({
-          host: 'localhost',
-          port: 5432,
-          user: 'postgres',
-          database: 'myapp_development',
-          version: '16.2',
-        })
-      }, [])
-      return <Story />
-    },
-  ],
+export const Connected: Story = () => {
+  const setConnected = useConnectionStore((s) => s.setConnected)
+  useEffect(() => {
+    setConnected({
+      host: 'localhost',
+      port: 5432,
+      user: 'postgres',
+      database: 'myapp_development',
+      version: '16.2',
+    })
+  }, [setConnected])
+  return <StatusBar />
 }
