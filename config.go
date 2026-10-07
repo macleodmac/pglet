@@ -21,6 +21,9 @@ type Config struct {
 	RepoDir     string
 	Dev         bool
 	Cors        bool
+
+	ReadOnly            bool
+	StatementTimeoutSec int
 }
 
 func parseConfig() Config {
@@ -88,6 +91,13 @@ func parseConfig() Config {
 		case "--prefix":
 			if i+1 < len(args) {
 				cfg.Prefix = args[i+1]
+				i++
+			}
+		case "--read-only":
+			cfg.ReadOnly = true
+		case "--statement-timeout":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &cfg.StatementTimeoutSec)
 				i++
 			}
 		case "--open":

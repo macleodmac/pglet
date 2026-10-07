@@ -88,9 +88,21 @@ func (s *Server) GetTableRows(w http.ResponseWriter, r *http.Request, table stri
 		sortOrd = string(*params.SortOrder)
 	}
 
-	result, total, err := s.svc.TableRows(r.Context(), table, limit, offset, sortCol, sortOrd)
+	var filters []client.Filter
+	if params.Filters != nil {
+		for _, f := range *params.Filters {
+			cf := client.Filter{Column: f.Column, Op: client.FilterOp(f.Op)}
+			if f.Value != nil {
+				cf.Value = *f.Value
+			}
+			filters = append(filters, cf)
+		}
+	}
+
+	result, total, err := s.svc.TableRows(r.Context(), table, limit, offset, sortCol, sortOrd, filters)
 	if err != nil {
-		writeErr(w, svcStatus(err), err)
+		// Bad filter values (e.g. "abc" for an integer column) are user errors.
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -99,6 +111,32 @@ func (s *Server) GetTableRows(w http.ResponseWriter, r *http.Request, table stri
 		Rows: toNullableRows(result.Rows), TotalCount: total,
 		Page: offset / limit, PageSize: limit,
 	})
+}
+
+func (s *Server) UpdateTableRow(w http.ResponseWriter, r *http.Request, table string) {
+	var req TableRowUpdate
+	if err := readJSON(r, &req); err != nil {
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if err := s.svc.UpdateTableRow(r.Context(), table, fromCellMap(req.Key), fromCellMap(req.Changes)); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	success := true
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
+}
+
+func fromCellMap(m map[string]*CellValue) map[string]*string {
+	out := make(map[string]*string, len(m))
+	for k, v := range m {
+		if v == nil {
+			out[k] = nil
+		} else {
+			out[k] = *v
+		}
+	}
+	return out
 }
 
 func (s *Server) GetTableInfo(w http.ResponseWriter, r *http.Request, table string) {
@@ -211,6 +249,9 @@ func toQueryResult(qr *client.QueryResult) QueryResult {
 		Columns: qr.Columns, ColumnTypes: qr.ColumnTypes,
 		Rows: toNullableRows(qr.Rows), RowCount: qr.RowCount,
 		DurationMs: qr.DurationMs, RowsAffected: qr.RowsAffected,
+	}
+	if qr.Truncated {
+		res.Truncated = &qr.Truncated
 	}
 	if qr.CommandTag != "" {
 		res.CommandTag = &qr.CommandTag

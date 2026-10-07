@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/macleodmac/pglet/internal/client"
 	"github.com/macleodmac/pglet/internal/service"
 )
 
@@ -15,12 +16,21 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query)
-	inTx := s.svc.InTransaction(req.TabId)
+	maxRows := service.DefaultMaxRows
+	if req.MaxRows != nil {
+		maxRows = *req.MaxRows
+	}
+	result, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query, maxRows)
+	s.writeQueryResult(w, req.TabId, result, err)
+}
+
+// writeQueryResult writes a query outcome. Query execution errors go inside a
+// 200 OK result per the API contract; other errors map to an HTTP status.
+func (s *Server) writeQueryResult(w http.ResponseWriter, tabID string, result *client.QueryResult, err error) {
+	inTx := s.svc.InTransaction(tabID)
 	if err != nil {
 		var qe *service.QueryError
 		if errors.As(err, &qe) {
-			// Query execution error — return inside 200 OK per API contract
 			errMsg := qe.Error()
 			writeJSON(w, http.StatusOK, QueryResult{
 				Columns: []string{}, ColumnTypes: []string{},
@@ -80,12 +90,8 @@ func (s *Server) ExplainQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.svc.ExplainQuery(r.Context(), req.Query)
-	if err != nil {
-		writeErr(w, svcStatus(err), err)
-		return
-	}
-	writeJSON(w, http.StatusOK, toQueryResult(result))
+	result, err := s.svc.ExplainQuery(r.Context(), req.TabId, req.Query)
+	s.writeQueryResult(w, req.TabId, result, err)
 }
 
 func (s *Server) AnalyzeQuery(w http.ResponseWriter, r *http.Request) {
@@ -95,12 +101,8 @@ func (s *Server) AnalyzeQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.svc.AnalyzeQuery(r.Context(), req.Query)
-	if err != nil {
-		writeErr(w, svcStatus(err), err)
-		return
-	}
-	writeJSON(w, http.StatusOK, toQueryResult(result))
+	result, err := s.svc.AnalyzeQuery(r.Context(), req.TabId, req.Query)
+	s.writeQueryResult(w, req.TabId, result, err)
 }
 
 func (s *Server) CancelQuery(w http.ResponseWriter, r *http.Request) {

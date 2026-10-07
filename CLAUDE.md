@@ -66,3 +66,5 @@ Use `pnpm`, not npm.
 - react-resizable-panels v4: exports are `Group`, `Panel`, `Separator`; use `orientation` not `direction`; strings like `"18%"` for percentages
 - Tailwind's `@import` in `index.css` pins `source("..")`; Ladle runs Vite from its own root, so auto-detection would find no classes
 - Monaco custom themes must be defined in `beforeMount`, not `onMount`, or the editor starts on the fallback theme
+- lib/pq's `BeginTx` sends `BEGIN READ WRITE` unless `TxOptions.ReadOnly` is set, which silently overrides the read-only session option; pass `ReadOnly: c.opts.ReadOnly` or use `Client.Begin`
+- Integration tests in `internal/client` run only when `PGLET_TEST_DATABASE_URL` is set

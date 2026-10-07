@@ -58,6 +58,12 @@ func (s *Service) InTransaction(tabID string) bool {
 	return ok
 }
 
+func (s *Service) anyTransactionOpen() bool {
+	s.txMu.Lock()
+	defer s.txMu.Unlock()
+	return len(s.txns) > 0
+}
+
 // getTx returns the tab's transaction without removing it.
 func (s *Service) getTx(tabID string) (*client.Tx, bool) {
 	s.txMu.Lock()

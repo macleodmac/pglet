@@ -30,12 +30,20 @@ func (s *Service) TableColumns(table string) ([]client.Column, error) {
 	return cl.TableColumns(table)
 }
 
-func (s *Service) TableRows(ctx context.Context, table string, limit, offset int, sortCol, sortOrd string) (*client.QueryResult, int, error) {
+func (s *Service) TableRows(ctx context.Context, table string, limit, offset int, sortCol, sortOrd string, filters []client.Filter) (*client.QueryResult, int, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, 0, err
 	}
-	return cl.TableRows(ctx, table, limit, offset, sortCol, sortOrd)
+	return cl.TableRows(ctx, table, limit, offset, sortCol, sortOrd, filters)
+}
+
+func (s *Service) UpdateTableRow(ctx context.Context, table string, key, changes map[string]*string) error {
+	cl, err := s.requireClient()
+	if err != nil {
+		return err
+	}
+	return cl.UpdateRow(ctx, table, key, changes)
 }
 
 func (s *Service) TableInfo(table string) (*client.TableInfo, error) {

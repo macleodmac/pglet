@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
+import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsErrors, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SetConnectionOptionsData, SetConnectionOptionsErrors, SetConnectionOptionsResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses, UpdateTableRowData, UpdateTableRowErrors, UpdateTableRowResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -53,6 +53,20 @@ export const switchDatabase = <ThrowOnError extends boolean = false>(options: Op
 export const getConnectionInfo = <ThrowOnError extends boolean = false>(options?: Options<GetConnectionInfoData, ThrowOnError>) => (options?.client ?? client).get<GetConnectionInfoResponses, unknown, ThrowOnError>({ url: '/api/connection', ...options });
 
 /**
+ * Reconnect with new session options (read-only, statement timeout)
+ *
+ * Refused while any tab has an open transaction, since reconnecting would roll it back.
+ */
+export const setConnectionOptions = <ThrowOnError extends boolean = false>(options: Options<SetConnectionOptionsData, ThrowOnError>) => (options.client ?? client).post<SetConnectionOptionsResponses, SetConnectionOptionsErrors, ThrowOnError>({
+    url: '/api/connection/options',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * List all databases on the server
  */
 export const listDatabases = <ThrowOnError extends boolean = false>(options?: Options<ListDatabasesData, ThrowOnError>) => (options?.client ?? client).get<ListDatabasesResponses, unknown, ThrowOnError>({ url: '/api/databases', ...options });
@@ -80,7 +94,19 @@ export const getTableColumns = <ThrowOnError extends boolean = false>(options: O
 /**
  * Paginated table data
  */
-export const getTableRows = <ThrowOnError extends boolean = false>(options: Options<GetTableRowsData, ThrowOnError>) => (options.client ?? client).get<GetTableRowsResponses, unknown, ThrowOnError>({ url: '/api/tables/{table}/rows', ...options });
+export const getTableRows = <ThrowOnError extends boolean = false>(options: Options<GetTableRowsData, ThrowOnError>) => (options.client ?? client).get<GetTableRowsResponses, GetTableRowsErrors, ThrowOnError>({ url: '/api/tables/{table}/rows', ...options });
+
+/**
+ * Update one row, identified by its primary key
+ */
+export const updateTableRow = <ThrowOnError extends boolean = false>(options: Options<UpdateTableRowData, ThrowOnError>) => (options.client ?? client).patch<UpdateTableRowResponses, UpdateTableRowErrors, ThrowOnError>({
+    url: '/api/tables/{table}/rows',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Table size and row estimates
@@ -130,7 +156,9 @@ export const runQuery = <ThrowOnError extends boolean = false>(options: Options<
 });
 
 /**
- * EXPLAIN a SQL query
+ * EXPLAIN (FORMAT JSON) a single statement
+ *
+ * Runs in a rolled-back transaction (a savepoint inside the tab's open transaction), so it never changes data.
  */
 export const explainQuery = <ThrowOnError extends boolean = false>(options: Options<ExplainQueryData, ThrowOnError>) => (options.client ?? client).post<ExplainQueryResponses, unknown, ThrowOnError>({
     url: '/api/explain',
@@ -142,7 +170,9 @@ export const explainQuery = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * EXPLAIN ANALYZE a SQL query
+ * EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) a single statement
+ *
+ * The statement really executes, inside a rolled-back transaction (a savepoint inside the tab's open transaction), so its effects are discarded.
  */
 export const analyzeQuery = <ThrowOnError extends boolean = false>(options: Options<AnalyzeQueryData, ThrowOnError>) => (options.client ?? client).post<AnalyzeQueryResponses, unknown, ThrowOnError>({
     url: '/api/analyze',

@@ -71,6 +71,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ConnectionInfo'
 
+  /api/connection/options:
+    post:
+      operationId: setConnectionOptions
+      summary: Reconnect with new session options (read-only, statement timeout)
+      description: Refused while any tab has an open transaction, since reconnecting would roll it back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionOptions'
+      responses:
+        '200':
+          description: Connection info with the new options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionInfo'
+        '400':
+          description: Not connected, or a transaction is open
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/databases:
     get:
       operationId: listDatabases
@@ -174,6 +199,15 @@ paths:
           schema:
             type: string
             enum: [ASC, DESC]
+        - name: filters
+          in: query
+          description: Filters combined with AND, sent as a JSON array.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TableFilter'
       responses:
         '200':
           description: Paginated rows
@@ -181,6 +215,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableRowsResult'
+        '400':
+          description: Invalid filter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      operationId: updateTableRow
+      summary: Update one row, identified by its primary key
+      parameters:
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TableRowUpdate'
+      responses:
+        '200':
+          description: Row updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Update rejected; nothing was changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/tables/{table}/info:
     get:
@@ -317,7 +385,8 @@ paths:
   /api/explain:
     post:
       operationId: explainQuery
-      summary: EXPLAIN a SQL query
+      summary: EXPLAIN (FORMAT JSON) a single statement
+      description: Runs in a rolled-back transaction (a savepoint inside the tab's open transaction), so it never changes data.
       requestBody:
         required: true
         content:
@@ -335,7 +404,8 @@ paths:
   /api/analyze:
     post:
       operationId: analyzeQuery
-      summary: EXPLAIN ANALYZE a SQL query
+      summary: EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) a single statement
+      description: The statement really executes, inside a rolled-back transaction (a savepoint inside the tab's open transaction), so its effects are discarded.
       requestBody:
         required: true
         content:
@@ -676,6 +746,23 @@ components:
       properties:
         url:
           type: string
+        read_only:
+          type: boolean
+        statement_timeout_ms:
+          type: integer
+          minimum: 0
+
+    ConnectionOptions:
+      type: object
+      required: [read_only, statement_timeout_ms]
+      properties:
+        read_only:
+          type: boolean
+          description: Sets default_transaction_read_only on every session. A guard rail, not a permission.
+        statement_timeout_ms:
+          type: integer
+          minimum: 0
+          description: statement_timeout for every session; 0 means no timeout.
 
     SwitchDBRequest:
       type: object
@@ -702,6 +789,10 @@ components:
           type: boolean
         connecting:
           type: boolean
+        read_only:
+          type: boolean
+        statement_timeout_ms:
+          type: integer
 
     AppInfo:
       type: object
@@ -859,7 +950,10 @@ components:
           type: integer
           format: int64
           nullable: true
-          description: Rows inserted/updated/deleted/returned; null for commands that report no count.
+          description: Rows inserted/updated/deleted/returned; null for commands that report no count. For a truncated result this is the full row count.
+        truncated:
+          type: boolean
+          description: More rows were returned than max_rows; only the first max_rows are included.
 
     TableRowsResult:
       type: object
@@ -894,6 +988,38 @@ components:
           type: string
         tab_id:
           type: string
+        max_rows:
+          type: integer
+          minimum: 0
+          description: Keep at most this many rows (default 1000); 0 keeps all. Ignored by explain/analyze.
+
+    TableFilter:
+      type: object
+      required: [column, op]
+      properties:
+        column:
+          type: string
+        op:
+          type: string
+          enum: [eq, neq, lt, lte, gt, gte, like, ilike, is_null, not_null]
+        value:
+          type: string
+          description: Compared as the column's type; ignored by is_null and not_null.
+
+    TableRowUpdate:
+      type: object
+      required: [key, changes]
+      properties:
+        key:
+          type: object
+          description: Primary key column values identifying the row.
+          additionalProperties:
+            $ref: '#/components/schemas/CellValue'
+        changes:
+          type: object
+          description: New values by column; null sets NULL.
+          additionalProperties:
+            $ref: '#/components/schemas/CellValue'
 
     CancelRequest:
       type: object

@@ -17,6 +17,11 @@ export function resultSummary(result: QueryResult): string {
   const tag = result.command_tag ?? ''
   const verb = PAST_TENSE[tag]
   if (verb && result.rows_affected != null) return `${plural(result.rows_affected)} ${verb}`
+  if (result.truncated) {
+    return result.rows_affected != null
+      ? `${result.row_count.toLocaleString()} of ${plural(result.rows_affected)}`
+      : `first ${plural(result.row_count)}`
+  }
   if (result.columns.length > 0) return plural(result.row_count)
   return tag || 'OK'
 }

@@ -6,6 +6,9 @@ import { QueryResultsEmpty } from '../results/QueryResultsEmpty'
 import { CommandResult, resultSummary } from '../results/CommandResult'
 import { Icon } from '../ui/Icon'
 import type { TabExecution } from './useTabExecution'
+import { ConfirmRunDialog } from './ConfirmRunDialog'
+import { ROW_LIMITS, useSettingsStore } from '../../stores/settings'
+import type { QueryResult } from '../../api/generated'
 
 async function downloadExport(query: string, format: 'csv' | 'json') {
   const res = await fetch('/api/export', {
@@ -43,6 +46,8 @@ export function ResultsPanel({
 }) {
   const { result, isRunning, txPending } = execution
   const showStats = result && !result.error && !isExplainResult(result.columns)
+  const maxRows = useSettingsStore((s) => s.maxRows)
+  const setMaxRows = useSettingsStore((s) => s.setMaxRows)
 
   return (
     <div className="flex h-full flex-col">
@@ -68,12 +73,23 @@ export function ResultsPanel({
         )}
         <button
           type="button"
-          onClick={execution.explain}
+          onClick={() => execution.explain(editorRef.current?.getSelectedText())}
           disabled={isRunning}
           className="flex items-center gap-1 rounded border border-surface-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-surface-100 disabled:opacity-50 dark:border-surface-700 dark:text-gray-300 dark:hover:bg-surface-800"
+          title="Show the plan without running the statement (Cmd+E)"
         >
           <Icon name="lightbulb" className="h-3 w-3" />
           Explain
+        </button>
+        <button
+          type="button"
+          onClick={() => execution.analyze(editorRef.current?.getSelectedText())}
+          disabled={isRunning}
+          className="flex items-center gap-1 rounded border border-surface-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-surface-100 disabled:opacity-50 dark:border-surface-700 dark:text-gray-300 dark:hover:bg-surface-800"
+          title="EXPLAIN ANALYZE: runs the statement for real timings, then rolls it back (Cmd+Shift+E)"
+        >
+          <Icon name="bolt" className="h-3 w-3" />
+          Analyze
         </button>
 
         <span className="mx-0.5 h-3.5 w-px bg-surface-300 dark:bg-surface-700" />
@@ -92,6 +108,22 @@ export function ResultsPanel({
         )}
 
         <div className="ml-auto flex items-center gap-1.5">
+          <label className="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400" title="Rows kept per result. Rows past the limit are counted but not loaded.">
+            Limit
+            <select
+              value={maxRows}
+              onChange={(e) => setMaxRows(Number(e.target.value))}
+              className="rounded border border-surface-300 bg-white px-1 py-0.5 text-[11px] text-gray-700 focus:border-accent-400 focus:outline-none dark:border-surface-700 dark:bg-surface-800 dark:text-gray-300"
+              aria-label="Row limit"
+            >
+              {ROW_LIMITS.map((n) => (
+                <option key={n} value={n}>
+                  {n === 0 ? 'All' : n.toLocaleString()}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="mx-0.5 h-3.5 w-px bg-surface-300 dark:bg-surface-700" />
           {showStats && (
             <>
               <button
@@ -144,11 +176,37 @@ export function ResultsPanel({
         ) : result && result.columns.length === 0 ? (
           <CommandResult result={result} />
         ) : result ? (
-          <DataGrid columns={result.columns} columnTypes={result.column_types} rows={result.rows} />
+          <div className="flex h-full flex-col">
+            {result.truncated && <TruncatedBanner result={result} />}
+            <div className="min-h-0 flex-1">
+              <DataGrid columns={result.columns} columnTypes={result.column_types} rows={result.rows} />
+            </div>
+          </div>
         ) : (
           <QueryResultsEmpty />
         )}
       </div>
+
+      {execution.pendingConfirm && (
+        <ConfirmRunDialog
+          statements={execution.pendingConfirm.statements}
+          inTransaction={execution.inTransaction}
+          onConfirm={execution.confirmRun}
+          onCancel={execution.dismissConfirm}
+        />
+      )}
+    </div>
+  )
+}
+
+function TruncatedBanner({ result }: { result: QueryResult }) {
+  const kept = result.row_count.toLocaleString()
+  return (
+    <div className="flex-shrink-0 border-b border-amber-300/50 bg-amber-400/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-400">
+      {result.rows_affected != null
+        ? `Showing the first ${kept} of ${result.rows_affected.toLocaleString()} rows.`
+        : `Showing the first ${kept} rows; the rest were not fetched.`}{' '}
+      Raise the row limit and run again to see more.
     </div>
   )
 }

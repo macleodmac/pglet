@@ -6,6 +6,7 @@ import { useTabStore } from '../../stores/tabs'
 interface SavedConnection {
   name: string
   url: string
+  readOnly?: boolean
 }
 
 const STORAGE_KEY = 'pglet-connections'
@@ -37,6 +38,7 @@ function nameFromUrl(raw: string): string {
 
 export function ConnectionDialog() {
   const [url, setUrl] = useState('postgres://localhost:5432/postgres')
+  const [readOnly, setReadOnly] = useState(false)
   const [saved, setSaved] = useState<SavedConnection[]>(loadSaved)
   const [editingName, setEditingName] = useState<string | null>(null)
   const [nameInput, setNameInput] = useState('')
@@ -57,23 +59,19 @@ export function ConnectionDialog() {
   }, [editingName])
 
   const handleConnect = useCallback(
-    (connectUrl?: string) => {
-      const target = connectUrl || url
+    (target: string, asReadOnly: boolean) => {
       if (!target.trim()) return
-      connect.mutate(target, {
-        onSuccess: (info) => {
-          setConnected({
-            host: info.host,
-            port: info.port,
-            user: info.user,
-            database: info.database,
-            version: info.version,
-          })
-          useTabStore.getState().initFromServer()
+      connect.mutate(
+        { url: target, read_only: asReadOnly },
+        {
+          onSuccess: (info) => {
+            setConnected(info)
+            useTabStore.getState().initFromServer()
+          },
         },
-      })
+      )
     },
-    [url, connect, setConnected],
+    [connect, setConnected],
   )
 
   const handleSave = () => {
@@ -87,7 +85,7 @@ export function ConnectionDialog() {
   const confirmSave = () => {
     if (!editingName) return
     const name = nameInput.trim() || nameFromUrl(editingName)
-    const next = [...saved, { name, url: editingName }]
+    const next = [...saved, { name, url: editingName, readOnly }]
     setSaved(next)
     persistSaved(next)
     setEditingName(null)
@@ -122,7 +120,7 @@ export function ConnectionDialog() {
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+            onKeyDown={(e) => e.key === 'Enter' && handleConnect(url, readOnly)}
             placeholder="postgres://user:pass@host:port/db"
             className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-400 dark:border-gray-700 dark:bg-surface-800 dark:text-gray-100"
           />
@@ -166,6 +164,17 @@ export function ConnectionDialog() {
           </div>
         )}
 
+        <label className="mb-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={readOnly}
+            onChange={(e) => setReadOnly(e.target.checked)}
+            className="h-3.5 w-3.5 accent-accent-500"
+          />
+          Read-only
+          <span className="text-xs text-gray-400 dark:text-gray-500">blocks writes unless a session opts back in</span>
+        </label>
+
         {connect.error && (
           <p className="mb-4 text-sm text-danger">
             {connect.error.message}
@@ -174,7 +183,7 @@ export function ConnectionDialog() {
 
         <button
           type="button"
-          onClick={() => handleConnect()}
+          onClick={() => handleConnect(url, readOnly)}
           disabled={connect.isPending || !url.trim()}
           className="mb-5 w-full rounded-md bg-accent-500 px-4 py-2 text-sm font-medium text-white hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-surface-900"
         >
@@ -197,12 +206,14 @@ export function ConnectionDialog() {
                     type="button"
                     onClick={() => {
                       setUrl(c.url)
-                      handleConnect(c.url)
+                      setReadOnly(!!c.readOnly)
+                      handleConnect(c.url, !!c.readOnly)
                     }}
                     className="flex min-w-0 flex-1 flex-col text-left"
                   >
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800 dark:text-gray-200">
                       {c.name}
+                      {c.readOnly && <ReadOnlyBadge />}
                     </span>
                     <span className="truncate font-mono text-xs text-gray-400 dark:text-gray-500">
                       {c.url}
@@ -225,5 +236,13 @@ export function ConnectionDialog() {
         )}
       </div>
     </div>
+  )
+}
+
+function ReadOnlyBadge() {
+  return (
+    <span className="rounded bg-sky-500/15 px-1 py-px text-[10px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-400">
+      read-only
+    </span>
   )
 }

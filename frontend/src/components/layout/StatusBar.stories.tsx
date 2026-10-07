@@ -28,3 +28,19 @@ export const Connected: Story = () => {
   }, [setConnected])
   return <StatusBar />
 }
+
+export const ReadOnlyWithTimeout: Story = () => {
+  const setConnected = useConnectionStore((s) => s.setConnected)
+  useEffect(() => {
+    setConnected({
+      host: 'prod-replica',
+      port: 5432,
+      user: 'analyst',
+      database: 'myapp_production',
+      version: '16.2',
+      read_only: true,
+      statement_timeout_ms: 30_000,
+    })
+  }, [setConnected])
+  return <StatusBar />
+}

@@ -14,6 +14,19 @@ export type SuccessResponse = {
 
 export type ConnectRequest = {
     url: string;
+    read_only?: boolean;
+    statement_timeout_ms?: number;
+};
+
+export type ConnectionOptions = {
+    /**
+     * Sets default_transaction_read_only on every session. A guard rail, not a permission.
+     */
+    read_only: boolean;
+    /**
+     * statement_timeout for every session; 0 means no timeout.
+     */
+    statement_timeout_ms: number;
 };
 
 export type SwitchDbRequest = {
@@ -28,6 +41,8 @@ export type ConnectionInfo = {
     version: string;
     connected?: boolean;
     connecting?: boolean;
+    read_only?: boolean;
+    statement_timeout_ms?: number;
 };
 
 export type AppInfo = {
@@ -101,9 +116,13 @@ export type QueryResult = {
      */
     command_tag?: string;
     /**
-     * Rows inserted/updated/deleted/returned; null for commands that report no count.
+     * Rows inserted/updated/deleted/returned; null for commands that report no count. For a truncated result this is the full row count.
      */
     rows_affected?: number | null;
+    /**
+     * More rows were returned than max_rows; only the first max_rows are included.
+     */
+    truncated?: boolean;
 };
 
 export type TableRowsResult = {
@@ -118,6 +137,34 @@ export type TableRowsResult = {
 export type QueryRequest = {
     query: string;
     tab_id: string;
+    /**
+     * Keep at most this many rows (default 1000); 0 keeps all. Ignored by explain/analyze.
+     */
+    max_rows?: number;
+};
+
+export type TableFilter = {
+    column: string;
+    op: 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte' | 'like' | 'ilike' | 'is_null' | 'not_null';
+    /**
+     * Compared as the column's type; ignored by is_null and not_null.
+     */
+    value?: string;
+};
+
+export type TableRowUpdate = {
+    /**
+     * Primary key column values identifying the row.
+     */
+    key: {
+        [key: string]: CellValue;
+    };
+    /**
+     * New values by column; null sets NULL.
+     */
+    changes: {
+        [key: string]: CellValue;
+    };
 };
 
 export type CancelRequest = {
@@ -304,6 +351,31 @@ export type GetConnectionInfoResponses = {
 
 export type GetConnectionInfoResponse = GetConnectionInfoResponses[keyof GetConnectionInfoResponses];
 
+export type SetConnectionOptionsData = {
+    body: ConnectionOptions;
+    path?: never;
+    query?: never;
+    url: '/api/connection/options';
+};
+
+export type SetConnectionOptionsErrors = {
+    /**
+     * Not connected, or a transaction is open
+     */
+    400: ErrorResponse;
+};
+
+export type SetConnectionOptionsError = SetConnectionOptionsErrors[keyof SetConnectionOptionsErrors];
+
+export type SetConnectionOptionsResponses = {
+    /**
+     * Connection info with the new options
+     */
+    200: ConnectionInfo;
+};
+
+export type SetConnectionOptionsResponse = SetConnectionOptionsResponses[keyof SetConnectionOptionsResponses];
+
 export type ListDatabasesData = {
     body?: never;
     path?: never;
@@ -398,9 +470,22 @@ export type GetTableRowsData = {
         offset?: number;
         sort_column?: string;
         sort_order?: 'ASC' | 'DESC';
+        /**
+         * Filters combined with AND, sent as a JSON array.
+         */
+        filters?: Array<TableFilter>;
     };
     url: '/api/tables/{table}/rows';
 };
+
+export type GetTableRowsErrors = {
+    /**
+     * Invalid filter
+     */
+    400: ErrorResponse;
+};
+
+export type GetTableRowsError = GetTableRowsErrors[keyof GetTableRowsErrors];
 
 export type GetTableRowsResponses = {
     /**
@@ -410,6 +495,33 @@ export type GetTableRowsResponses = {
 };
 
 export type GetTableRowsResponse = GetTableRowsResponses[keyof GetTableRowsResponses];
+
+export type UpdateTableRowData = {
+    body: TableRowUpdate;
+    path: {
+        table: string;
+    };
+    query?: never;
+    url: '/api/tables/{table}/rows';
+};
+
+export type UpdateTableRowErrors = {
+    /**
+     * Update rejected; nothing was changed
+     */
+    400: ErrorResponse;
+};
+
+export type UpdateTableRowError = UpdateTableRowErrors[keyof UpdateTableRowErrors];
+
+export type UpdateTableRowResponses = {
+    /**
+     * Row updated
+     */
+    200: SuccessResponse;
+};
+
+export type UpdateTableRowResponse = UpdateTableRowResponses[keyof UpdateTableRowResponses];
 
 export type GetTableInfoData = {
     body?: never;

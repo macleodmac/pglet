@@ -3,6 +3,7 @@ import { queryClient } from './queryClient'
 import {
   connect,
   disconnect,
+  setConnectionOptions,
   switchDatabase,
   getConnectionInfo,
   listDatabases,
@@ -10,6 +11,7 @@ import {
   listObjects,
   getTableColumns,
   getTableRows,
+  updateTableRow,
   getTableInfo,
   getTableIndexes,
   getTableConstraints,
@@ -33,7 +35,7 @@ import {
   aiSuggestions,
   aiTabName,
 } from './client'
-import type { SavedQueryInput } from './generated'
+import type { CellValue, SavedQueryInput, TableFilter } from './generated'
 
 function unwrap<T>(res: { data?: T; error?: unknown }): T {
   if (res.error) {
@@ -54,7 +56,15 @@ export function useConnectionInfo() {
 
 export function useConnect() {
   return useMutation({
-    mutationFn: async (url: string) => unwrap(await connect({ body: { url } })),
+    mutationFn: async (params: { url: string; read_only?: boolean }) =>
+      unwrap(await connect({ body: params })),
+  })
+}
+
+export function useSetConnectionOptions() {
+  return useMutation({
+    mutationFn: async (opts: { read_only: boolean; statement_timeout_ms: number }) =>
+      unwrap(await setConnectionOptions({ body: opts })),
   })
 }
 
@@ -109,7 +119,13 @@ export function useTableColumns(table: string) {
 
 export function useTableRows(
   table: string,
-  opts: { limit?: number; offset?: number; sort_column?: string; sort_order?: 'ASC' | 'DESC' },
+  opts: {
+    limit?: number
+    offset?: number
+    sort_column?: string
+    sort_order?: 'ASC' | 'DESC'
+    filters?: TableFilter[]
+  },
 ) {
   return useQuery({
     queryKey: ['table-rows', table, opts],
@@ -122,11 +138,30 @@ export function useTableRows(
             offset: opts.offset,
             sort_column: opts.sort_column,
             sort_order: opts.sort_order,
+            filters: opts.filters?.length ? opts.filters : undefined,
+          },
+          // The spec sends filters as a JSON array; the default serializer
+          // would explode it into one param per object.
+          querySerializer: (query) => {
+            const params = new URLSearchParams()
+            for (const [key, value] of Object.entries(query)) {
+              if (value === undefined) continue
+              params.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value))
+            }
+            return params.toString()
           },
         }),
       ),
     placeholderData: keepPreviousData,
     enabled: !!table,
+  })
+}
+
+export function useUpdateTableRow(table: string) {
+  return useMutation({
+    mutationFn: async (body: { key: Record<string, CellValue>; changes: Record<string, CellValue> }) =>
+      unwrap(await updateTableRow({ path: { table }, body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['table-rows', table] }),
   })
 }
 
@@ -175,7 +210,7 @@ export function useActivity() {
 // Query execution
 export function useRunQuery() {
   return useMutation({
-    mutationFn: async (params: { query: string; tab_id: string }) =>
+    mutationFn: async (params: { query: string; tab_id: string; max_rows?: number }) =>
       unwrap(await runQuery({ body: params })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['history'] })

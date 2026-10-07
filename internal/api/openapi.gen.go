@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,6 +24,20 @@ import (
 const (
 	Csv  ExportRequestFormat = "csv"
 	Json ExportRequestFormat = "json"
+)
+
+// Defines values for TableFilterOp.
+const (
+	Eq      TableFilterOp = "eq"
+	Gt      TableFilterOp = "gt"
+	Gte     TableFilterOp = "gte"
+	Ilike   TableFilterOp = "ilike"
+	IsNull  TableFilterOp = "is_null"
+	Like    TableFilterOp = "like"
+	Lt      TableFilterOp = "lt"
+	Lte     TableFilterOp = "lte"
+	Neq     TableFilterOp = "neq"
+	NotNull TableFilterOp = "not_null"
 )
 
 // Defines values for GetTableRowsParamsSortOrder.
@@ -106,18 +121,31 @@ type Column struct {
 
 // ConnectRequest defines model for ConnectRequest.
 type ConnectRequest struct {
-	Url string `json:"url"`
+	ReadOnly           *bool  `json:"read_only,omitempty"`
+	StatementTimeoutMs *int   `json:"statement_timeout_ms,omitempty"`
+	Url                string `json:"url"`
 }
 
 // ConnectionInfo defines model for ConnectionInfo.
 type ConnectionInfo struct {
-	Connected  *bool  `json:"connected,omitempty"`
-	Connecting *bool  `json:"connecting,omitempty"`
-	Database   string `json:"database"`
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	User       string `json:"user"`
-	Version    string `json:"version"`
+	Connected          *bool  `json:"connected,omitempty"`
+	Connecting         *bool  `json:"connecting,omitempty"`
+	Database           string `json:"database"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	ReadOnly           *bool  `json:"read_only,omitempty"`
+	StatementTimeoutMs *int   `json:"statement_timeout_ms,omitempty"`
+	User               string `json:"user"`
+	Version            string `json:"version"`
+}
+
+// ConnectionOptions defines model for ConnectionOptions.
+type ConnectionOptions struct {
+	// ReadOnly Sets default_transaction_read_only on every session. A guard rail, not a permission.
+	ReadOnly bool `json:"read_only"`
+
+	// StatementTimeoutMs statement_timeout for every session; 0 means no timeout.
+	StatementTimeoutMs int `json:"statement_timeout_ms"`
 }
 
 // ErrorResponse defines model for ErrorResponse.
@@ -165,8 +193,10 @@ type HistoryResponse struct {
 
 // QueryRequest defines model for QueryRequest.
 type QueryRequest struct {
-	Query string `json:"query"`
-	TabId string `json:"tab_id"`
+	// MaxRows Keep at most this many rows (default 1000); 0 keeps all. Ignored by explain/analyze.
+	MaxRows *int   `json:"max_rows,omitempty"`
+	Query   string `json:"query"`
+	TabId   string `json:"tab_id"`
 }
 
 // QueryResult defines model for QueryResult.
@@ -184,8 +214,11 @@ type QueryResult struct {
 	RowCount      int           `json:"row_count"`
 	Rows          [][]CellValue `json:"rows"`
 
-	// RowsAffected Rows inserted/updated/deleted/returned; null for commands that report no count.
+	// RowsAffected Rows inserted/updated/deleted/returned; null for commands that report no count. For a truncated result this is the full row count.
 	RowsAffected *int64 `json:"rows_affected"`
+
+	// Truncated More rows were returned than max_rows; only the first max_rows are included.
+	Truncated *bool `json:"truncated,omitempty"`
 }
 
 // SavedQuery defines model for SavedQuery.
@@ -252,6 +285,18 @@ type TableConstraint struct {
 	Type       string    `json:"type"`
 }
 
+// TableFilter defines model for TableFilter.
+type TableFilter struct {
+	Column string        `json:"column"`
+	Op     TableFilterOp `json:"op"`
+
+	// Value Compared as the column's type; ignored by is_null and not_null.
+	Value *string `json:"value,omitempty"`
+}
+
+// TableFilterOp defines model for TableFilter.Op.
+type TableFilterOp string
+
 // TableIndex defines model for TableIndex.
 type TableIndex struct {
 	Columns    *[]string `json:"columns,omitempty"`
@@ -267,6 +312,15 @@ type TableInfo struct {
 	RowEstimate int64  `json:"row_estimate"`
 	TableSize   string `json:"table_size"`
 	TotalSize   string `json:"total_size"`
+}
+
+// TableRowUpdate defines model for TableRowUpdate.
+type TableRowUpdate struct {
+	// Changes New values by column; null sets NULL.
+	Changes map[string]*CellValue `json:"changes"`
+
+	// Key Primary key column values identifying the row.
+	Key map[string]*CellValue `json:"key"`
 }
 
 // TableRowsResult defines model for TableRowsResult.
@@ -306,6 +360,9 @@ type GetTableRowsParams struct {
 	Offset     *int                         `form:"offset,omitempty" json:"offset,omitempty"`
 	SortColumn *string                      `form:"sort_column,omitempty" json:"sort_column,omitempty"`
 	SortOrder  *GetTableRowsParamsSortOrder `form:"sort_order,omitempty" json:"sort_order,omitempty"`
+
+	// Filters Filters combined with AND, sent as a JSON array.
+	Filters *[]TableFilter `form:"filters,omitempty" json:"filters,omitempty"`
 }
 
 // GetTableRowsParamsSortOrder defines parameters for GetTableRows.
@@ -322,6 +379,9 @@ type AnalyzeQueryJSONRequestBody = QueryRequest
 
 // ConnectJSONRequestBody defines body for Connect for application/json ContentType.
 type ConnectJSONRequestBody = ConnectRequest
+
+// SetConnectionOptionsJSONRequestBody defines body for SetConnectionOptions for application/json ContentType.
+type SetConnectionOptionsJSONRequestBody = ConnectionOptions
 
 // ExplainQueryJSONRequestBody defines body for ExplainQuery for application/json ContentType.
 type ExplainQueryJSONRequestBody = QueryRequest
@@ -343,6 +403,9 @@ type UpdateSavedQueryJSONRequestBody = SavedQueryInput
 
 // SwitchDatabaseJSONRequestBody defines body for SwitchDatabase for application/json ContentType.
 type SwitchDatabaseJSONRequestBody = SwitchDBRequest
+
+// UpdateTableRowJSONRequestBody defines body for UpdateTableRow for application/json ContentType.
+type UpdateTableRowJSONRequestBody = TableRowUpdate
 
 // SaveTabStateJSONRequestBody defines body for SaveTabState for application/json ContentType.
 type SaveTabStateJSONRequestBody = TabState
@@ -370,7 +433,7 @@ type ServerInterface interface {
 	// Generate a short tab name from SQL
 	// (POST /api/ai/tab-name)
 	AiTabName(w http.ResponseWriter, r *http.Request)
-	// EXPLAIN ANALYZE a SQL query
+	// EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) a single statement
 	// (POST /api/analyze)
 	AnalyzeQuery(w http.ResponseWriter, r *http.Request)
 	// Connect to a PostgreSQL database
@@ -379,13 +442,16 @@ type ServerInterface interface {
 	// Get current connection info
 	// (GET /api/connection)
 	GetConnectionInfo(w http.ResponseWriter, r *http.Request)
+	// Reconnect with new session options (read-only, statement timeout)
+	// (POST /api/connection/options)
+	SetConnectionOptions(w http.ResponseWriter, r *http.Request)
 	// List all databases on the server
 	// (GET /api/databases)
 	ListDatabases(w http.ResponseWriter, r *http.Request)
 	// Disconnect from the database
 	// (POST /api/disconnect)
 	Disconnect(w http.ResponseWriter, r *http.Request)
-	// EXPLAIN a SQL query
+	// EXPLAIN (FORMAT JSON) a single statement
 	// (POST /api/explain)
 	ExplainQuery(w http.ResponseWriter, r *http.Request)
 	// Export query results as CSV or JSON
@@ -451,6 +517,9 @@ type ServerInterface interface {
 	// Paginated table data
 	// (GET /api/tables/{table}/rows)
 	GetTableRows(w http.ResponseWriter, r *http.Request, table string, params GetTableRowsParams)
+	// Update one row, identified by its primary key
+	// (PATCH /api/tables/{table}/rows)
+	UpdateTableRow(w http.ResponseWriter, r *http.Request, table string)
 	// All tables size and row stats
 	// (GET /api/tables_stats)
 	GetTablesStats(w http.ResponseWriter, r *http.Request)
@@ -569,6 +638,20 @@ func (siw *ServerInterfaceWrapper) GetConnectionInfo(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetConnectionInfo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetConnectionOptions operation middleware
+func (siw *ServerInterfaceWrapper) SetConnectionOptions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetConnectionOptions(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1071,8 +1154,48 @@ func (siw *ServerInterfaceWrapper) GetTableRows(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ------------- Optional query parameter "filters" -------------
+
+	if paramValue := r.URL.Query().Get("filters"); paramValue != "" {
+
+		var value []TableFilter
+		err = json.Unmarshal([]byte(paramValue), &value)
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &UnmarshalingParamError{ParamName: "filters", Err: err})
+			return
+		}
+
+		params.Filters = &value
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTableRows(w, r, table, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTableRow operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTableRow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "table" -------------
+	var table string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "table", r.PathValue("table"), &table, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "table", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTableRow(w, r, table)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1293,6 +1416,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/analyze", wrapper.AnalyzeQuery)
 	m.HandleFunc("POST "+options.BaseURL+"/api/connect", wrapper.Connect)
 	m.HandleFunc("GET "+options.BaseURL+"/api/connection", wrapper.GetConnectionInfo)
+	m.HandleFunc("POST "+options.BaseURL+"/api/connection/options", wrapper.SetConnectionOptions)
 	m.HandleFunc("GET "+options.BaseURL+"/api/databases", wrapper.ListDatabases)
 	m.HandleFunc("POST "+options.BaseURL+"/api/disconnect", wrapper.Disconnect)
 	m.HandleFunc("POST "+options.BaseURL+"/api/explain", wrapper.ExplainQuery)
@@ -1317,6 +1441,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/tables/{table}/indexes", wrapper.GetTableIndexes)
 	m.HandleFunc("GET "+options.BaseURL+"/api/tables/{table}/info", wrapper.GetTableInfo)
 	m.HandleFunc("GET "+options.BaseURL+"/api/tables/{table}/rows", wrapper.GetTableRows)
+	m.HandleFunc("PATCH "+options.BaseURL+"/api/tables/{table}/rows", wrapper.UpdateTableRow)
 	m.HandleFunc("GET "+options.BaseURL+"/api/tables_stats", wrapper.GetTablesStats)
 	m.HandleFunc("GET "+options.BaseURL+"/api/tabs", wrapper.GetTabState)
 	m.HandleFunc("PUT "+options.BaseURL+"/api/tabs", wrapper.SaveTabState)
@@ -1330,59 +1455,72 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"WeQYdrv/BQAA///FZG9mcU8AAA==",
+	"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",
+	"3zVQiOke8cgybLd/DwAA//8YMf+pDF0AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

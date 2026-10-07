@@ -2,8 +2,8 @@ package service
 
 import "github.com/macleodmac/pglet/internal/client"
 
-func (s *Service) Connect(url string) (*client.ConnectionInfo, error) {
-	cl, err := client.New(url)
+func (s *Service) Connect(url string, opts client.Options) (*client.ConnectionInfo, error) {
+	cl, err := client.New(url, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -13,6 +13,24 @@ func (s *Service) Connect(url string) (*client.ConnectionInfo, error) {
 		return nil, err
 	}
 	return info, nil
+}
+
+// SetConnectionOptions reconnects to the same database with new session
+// options. It refuses while a transaction is open rather than roll it back.
+func (s *Service) SetConnectionOptions(opts client.Options) (*client.ConnectionInfo, error) {
+	cl, err := s.requireClient()
+	if err != nil {
+		return nil, err
+	}
+	if s.anyTransactionOpen() {
+		return nil, ErrTxOpen
+	}
+	newClient, err := cl.WithOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	s.SwapClient(newClient)
+	return newClient.Info()
 }
 
 func (s *Service) Disconnect() {

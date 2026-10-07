@@ -72,7 +72,7 @@ func main() {
 	if connURL != "" {
 		svc.SetConnecting(true)
 		go func() {
-			cl, err := client.New(connURL)
+			cl, err := client.New(connURL, client.Options{ReadOnly: cfg.ReadOnly, StatementTimeoutMs: cfg.StatementTimeoutSec * 1000})
 			if err != nil {
 				slog.Warn("failed to connect", "err", err)
 				svc.SetConnecting(false)
@@ -168,6 +168,9 @@ Connection:
   --pass <pass>     Database password
   --db <name>       Database name
   --ssl <mode>      SSL mode (default: disable)
+  --read-only       Start sessions read-only (default_transaction_read_only)
+  --statement-timeout <sec>
+                    Cancel statements running longer than this (default: none)
 
 Server:
   --bind <addr>     Bind address (default: localhost)

@@ -18,7 +18,8 @@ interface SqlEditorProps {
   value: string
   onChange: (value: string) => void
   onRun: (selectedText?: string) => void
-  onExplain: () => void
+  onExplain: (selectedText?: string) => void
+  onAnalyze?: (selectedText?: string) => void
   onSave?: () => void
 }
 
@@ -71,8 +72,16 @@ const handleBeforeMount: BeforeMount = (monaco) => {
   }
 }
 
+function selectedText(ed: MonacoEditor.ICodeEditor): string | undefined {
+  const selection = ed.getSelection()
+  const model = ed.getModel()
+  if (!selection || selection.isEmpty() || !model) return undefined
+  const text = model.getValueInRange(selection)
+  return text.trim() ? text : undefined
+}
+
 export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
-  { value, onChange, onRun, onExplain, onSave },
+  { value, onChange, onRun, onExplain, onAnalyze, onSave },
   ref,
 ) {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
@@ -110,9 +119,11 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   }))
   const onRunRef = useRef(onRun)
   const onExplainRef = useRef(onExplain)
+  const onAnalyzeRef = useRef(onAnalyze)
   const onSaveRef = useRef(onSave)
   onRunRef.current = onRun
   onExplainRef.current = onExplain
+  onAnalyzeRef.current = onAnalyze
   onSaveRef.current = onSave
 
   const handleMount: OnMount = useCallback(
@@ -152,7 +163,14 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         id: 'explain-query',
         label: 'Explain Query',
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE],
-        run: () => onExplainRef.current(),
+        run: (ed) => onExplainRef.current(selectedText(ed)),
+      })
+
+      editor.addAction({
+        id: 'analyze-query',
+        label: 'Explain Analyze Query (rolled back)',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
+        run: (ed) => onAnalyzeRef.current?.(selectedText(ed)),
       })
 
       editor.addAction({

@@ -15,7 +15,7 @@ func testClient(t *testing.T) *Client {
 	if url == "" {
 		t.Skip("PGLET_TEST_DATABASE_URL not set")
 	}
-	c, err := New(url)
+	c, err := New(url, Options{})
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}

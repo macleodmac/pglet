@@ -1,5 +1,6 @@
 import { useConnectionStore } from '../../stores/connection'
 import { DatabaseSwitcher } from '../connection/DatabaseSwitcher'
+import { SessionOptions } from '../connection/SessionOptions'
 
 export function StatusBar() {
   const info = useConnectionStore((s) => s.info)
@@ -15,6 +16,8 @@ export function StatusBar() {
           <DatabaseSwitcher />
           <span className="text-gray-300 dark:text-gray-600">|</span>
           <span>PG {info.version}</span>
+          <span className="text-gray-300 dark:text-gray-600">|</span>
+          <SessionOptions />
         </>
       ) : (
         <span>Not connected</span>

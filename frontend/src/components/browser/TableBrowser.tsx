@@ -1,9 +1,19 @@
 import { useState, useRef, useCallback, useLayoutEffect } from 'react'
 import type { Tab } from '../../stores/tabs'
 import { useTabStore } from '../../stores/tabs'
-import { useTableRows, useTableColumns, useTableIndexes, useTableConstraints, useTableInfo } from '../../api/queries'
-import { DataGrid } from '../results/DataGrid'
+import { useConnectionStore } from '../../stores/connection'
+import {
+  useTableRows,
+  useTableColumns,
+  useTableIndexes,
+  useTableConstraints,
+  useTableInfo,
+  useUpdateTableRow,
+} from '../../api/queries'
+import type { CellValue, TableFilter } from '../../api/generated'
+import { DataGrid, type SortOrder } from '../results/DataGrid'
 import { Pagination } from '../results/Pagination'
+import { FilterBar } from './FilterBar'
 
 const BASE_ROW_HEIGHT = 26
 const MIN_PAGE_SIZE = 10
@@ -16,8 +26,10 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
   const [pageSize, setPageSize] = useState(MIN_PAGE_SIZE)
   const [rowHeight, setRowHeight] = useState(BASE_ROW_HEIGHT)
   const [page, setPage] = useState(0)
-  const [sortColumn, _setSortColumn] = useState<string>()
-  const [sortOrder, _setSortOrder] = useState<'ASC' | 'DESC'>()
+  const [sort, setSort] = useState<{ column: string; order: SortOrder }>()
+  const [filters, setFilters] = useState<TableFilter[]>([])
+  const [editError, setEditError] = useState<string | null>(null)
+  const readOnly = useConnectionStore((s) => !!s.info?.read_only)
 
   const calcPageSize = useCallback(() => {
     if (!contentRef.current) return
@@ -43,14 +55,57 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
   const rowsQuery = useTableRows(tableName, {
     limit: pageSize,
     offset: page * pageSize,
-    sort_column: sortColumn,
-    sort_order: sortOrder,
+    sort_column: sort?.column,
+    sort_order: sort?.order,
+    filters,
   })
 
   const columnsQuery = useTableColumns(tableName)
+  const updateRow = useUpdateTableRow(tableName)
   const indexesQuery = useTableIndexes(tableName)
   const constraintsQuery = useTableConstraints(tableName)
   const infoQuery = useTableInfo(tableName)
+
+  const changeFilters = (next: TableFilter[]) => {
+    setFilters(next)
+    setPage(0)
+  }
+
+  // Header clicks cycle ascending → descending → unsorted.
+  const handleSort = (column: string) => {
+    setSort((prev) =>
+      prev?.column !== column ? { column, order: 'ASC' } : prev.order === 'ASC' ? { column, order: 'DESC' } : undefined,
+    )
+    setPage(0)
+  }
+
+  const handleFilter = (column: string, value: string | null) =>
+    changeFilters([...filters, value === null ? { column, op: 'is_null' } : { column, op: 'eq', value }])
+
+  // Rows can be edited when the table has a primary key to address them by.
+  const pkColumns = (columnsQuery.data ?? []).filter((c) => c.is_primary_key).map((c) => c.name)
+  const canEdit = pkColumns.length > 0 && !readOnly
+  const editHint = readOnly
+    ? 'Read-only session: editing is off'
+    : columnsQuery.data && pkColumns.length === 0
+      ? 'No primary key: rows cannot be edited'
+      : null
+
+  const handleEdit = async (row: (string | null)[], colIndex: number, value: string | null) => {
+    const data = rowsQuery.data
+    if (!data) return
+    // The server checks the key names the whole primary key and matches one row.
+    const key: Record<string, CellValue> = {}
+    for (const pk of pkColumns) key[pk] = row[data.columns.indexOf(pk)]
+    setEditError(null)
+    try {
+      await updateRow.mutateAsync({ key, changes: { [data.columns[colIndex]]: value } })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setEditError(`Could not update ${data.columns[colIndex]}: ${message}`)
+      throw err
+    }
+  }
 
   const views = [
     { key: 'rows' as const, label: 'Rows' },
@@ -89,6 +144,20 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
         ))}
       </div>
 
+      {activeView === 'rows' && columnsQuery.data && (
+        <FilterBar columns={columnsQuery.data} filters={filters} onChange={changeFilters} />
+      )}
+      {activeView === 'rows' && (rowsQuery.error || editError) && (
+        <div className="flex items-center gap-2 border-b border-danger/30 bg-danger/5 px-3 py-1 text-xs text-danger">
+          <span className="min-w-0 flex-1">{rowsQuery.error ? rowsQuery.error.message : editError}</span>
+          {editError && !rowsQuery.error && (
+            <button type="button" onClick={() => setEditError(null)} className="hover:underline">
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       <div ref={contentRef} className="min-h-0 flex-1 overflow-auto">
         {activeView === 'rows' && rowsQuery.data && (
@@ -98,6 +167,10 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
             rows={rowsQuery.data.rows}
             rowHeight={rowHeight}
             rowOffset={page * pageSize}
+            sort={sort}
+            onSort={handleSort}
+            onFilter={handleFilter}
+            onEdit={canEdit ? handleEdit : undefined}
           />
         )}
 
@@ -173,6 +246,11 @@ export function TableBrowser({ tableName, tab }: { tableName: string; tab: Tab }
         )}
       </div>
 
+      {activeView === 'rows' && editHint && (
+        <div className="border-t border-surface-200 px-3 py-0.5 text-[11px] text-gray-400 dark:border-surface-800 dark:text-gray-500">
+          {editHint}
+        </div>
+      )}
       {activeView === 'rows' && rowsQuery.data && (
         <Pagination
           page={page}

@@ -93,6 +93,7 @@ export function TabPanel({ tab }: { tab: Tab }) {
         onChange={(sql) => updateTab(tab.id, { sql })}
         onRun={execution.run}
         onExplain={execution.explain}
+        onAnalyze={execution.analyze}
         onSave={() => setShowSaveDialog(true)}
       />
     </Suspense>

@@ -1,7 +1,10 @@
 import { useRef, useState, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { CellDetail } from './CellDetail'
-import { ContextMenu } from '../ui/ContextMenu'
+import { ContextMenu, type MenuItem } from '../ui/ContextMenu'
+import { Icon } from '../ui/Icon'
+
+export type SortOrder = 'ASC' | 'DESC'
 
 interface DataGridProps {
   columns: string[]
@@ -9,9 +12,31 @@ interface DataGridProps {
   rows: (string | null)[][]
   rowHeight?: number
   rowOffset?: number
+  /** Current sort, shown in the header. */
+  sort?: { column: string; order: SortOrder }
+  /** Header click handler; enables sorting. */
+  onSort?: (column: string) => void
+  /** Enables "Filter by" in the cell context menu. */
+  onFilter?: (column: string, value: string | null) => void
+  /**
+   * Enables editing. Gets the row's values as they were when editing began,
+   * so a refetch meanwhile cannot redirect the edit to another row. Resolves
+   * when saved; rejects with an error whose message is shown.
+   */
+  onEdit?: (row: (string | null)[], colIndex: number, value: string | null) => Promise<void>
 }
 
-export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset = 0 }: DataGridProps) {
+export function DataGrid({
+  columns,
+  columnTypes,
+  rows,
+  rowHeight = 26,
+  rowOffset = 0,
+  sort,
+  onSort,
+  onFilter,
+  onEdit,
+}: DataGridProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [columnWidths, setColumnWidths] = useState<Record<number, number>>({})
   const [selectedCell, setSelectedCell] = useState<{
@@ -19,6 +44,9 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
     col: number
     value: string | null
     type: string
+    /** The whole row when the cell was opened, for editing. */
+    rowValues: (string | null)[]
+    editing?: boolean
   } | null>(null)
   const [copiedCell, setCopiedCell] = useState<string | null>(null)
   const copiedTimeout = useRef<ReturnType<typeof setTimeout>>(null)
@@ -26,7 +54,9 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
     x: number
     y: number
     value: string | null
-    column: string
+    row: number
+    col: number
+    rowValues: (string | null)[]
   } | null>(null)
 
   const rowVirtualizer = useVirtualizer({
@@ -85,6 +115,44 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
     [columns, rows],
   )
 
+  const contextMenuItems = (menu: NonNullable<typeof contextMenu>) => {
+    const column = columns[menu.col]
+    const items: MenuItem[] = [
+      {
+        label: 'Copy value',
+        onClick: () => navigator.clipboard.writeText(menu.value ?? ''),
+      },
+      {
+        label: 'Copy as JSON',
+        onClick: () => navigator.clipboard.writeText(JSON.stringify(menu.value)),
+      },
+    ]
+    if (onFilter) {
+      items.push({
+        label: menu.value === null ? `Filter: ${column} is NULL` : `Filter: ${column} = this value`,
+        onClick: () => onFilter(column, menu.value),
+      })
+    }
+    if (onEdit) {
+      items.push({
+        label: 'Edit cell…',
+        onClick: () =>
+          setSelectedCell({
+            row: menu.row,
+            col: menu.col,
+            value: menu.value,
+            type: columnTypes[menu.col],
+            rowValues: menu.rowValues,
+            editing: true,
+          }),
+      })
+      if (menu.value !== null) {
+        items.push({ label: 'Set to NULL', onClick: () => void onEdit(menu.rowValues, menu.col, null).catch(() => {}) })
+      }
+    }
+    return items
+  }
+
   const totalWidth = columns.reduce((sum, _, i) => sum + getWidth(i), 0) + 36 // +36 for row number col
 
   if (columns.length === 0) {
@@ -107,14 +175,25 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
             {columns.map((col, i) => (
               <div
                 key={i}
-                className="relative flex flex-shrink-0 items-center border-r border-surface-200 px-2 font-mono text-xs font-semibold text-gray-600 dark:border-surface-800 dark:text-gray-300"
+                className={`relative flex flex-shrink-0 items-center gap-1 border-r border-surface-200 px-2 font-mono text-xs font-semibold text-gray-600 dark:border-surface-800 dark:text-gray-300 ${
+                  onSort ? 'cursor-pointer select-none hover:bg-surface-100 dark:hover:bg-surface-800' : ''
+                }`}
                 style={{ width: getWidth(i), height: rowHeight }}
+                onClick={onSort ? () => onSort(col) : undefined}
+                title={onSort ? 'Sort by this column' : undefined}
               >
                 <span className="truncate">{col}</span>
+                {sort?.column === col && (
+                  <Icon
+                    name="chevron-down"
+                    className={`h-2 w-2 flex-shrink-0 text-accent-500 ${sort.order === 'ASC' ? 'rotate-180' : ''}`}
+                  />
+                )}
                 <div
                   className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-accent-400"
                   onMouseDown={(e) => handleResizeStart(i, e.clientX)}
                   onDoubleClick={() => handleAutoFit(i)}
+                  onClick={(e) => e.stopPropagation()}
                 />
               </div>
             ))}
@@ -152,6 +231,7 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
                           col: colIdx,
                           value: cell,
                           type: columnTypes[colIdx],
+                          rowValues: row,
                         })
                       }
                       onContextMenu={(e) => {
@@ -160,7 +240,9 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
                           x: e.clientX,
                           y: e.clientY,
                           value: cell,
-                          column: columns[colIdx],
+                          row: virtualRow.index,
+                          col: colIdx,
+                          rowValues: row,
                         })
                       }}
                     >
@@ -209,6 +291,15 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
           columnType={columnTypes[selectedCell.col]}
           value={selectedCell.value}
           onClose={() => setSelectedCell(null)}
+          startEditing={selectedCell.editing}
+          onSave={
+            onEdit
+              ? async (value) => {
+                  await onEdit(selectedCell.rowValues, selectedCell.col, value)
+                  setSelectedCell(null)
+                }
+              : undefined
+          }
         />
       )}
 
@@ -216,24 +307,7 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={[
-            {
-              label: 'Copy value',
-              onClick: () => navigator.clipboard.writeText(contextMenu.value ?? ''),
-            },
-            {
-              label: 'Copy as JSON',
-              onClick: () =>
-                navigator.clipboard.writeText(JSON.stringify(contextMenu.value)),
-            },
-            { label: '', separator: true, onClick: () => {} },
-            {
-              label: `Filter by ${contextMenu.column}`,
-              onClick: () => {
-                /* TODO: wire to query filter */
-              },
-            },
-          ]}
+          items={contextMenuItems(contextMenu)}
           onClose={() => setContextMenu(null)}
         />
       )}

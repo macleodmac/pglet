@@ -16,7 +16,7 @@ type Activity struct {
 }
 
 func (c *Client) TablesStats() (*QueryResult, error) {
-	return c.queryContext(context.Background(), `
+	return c.QueryWithContext(context.Background(), `
 		SELECT
 			schemaname || '.' || relname AS table,
 			n_live_tup AS rows,
@@ -66,7 +66,7 @@ func (c *Client) Activity() ([]Activity, error) {
 }
 
 func (c *Client) ServerSettings() (*QueryResult, error) {
-	return c.queryContext(context.Background(), `
+	return c.QueryWithContext(context.Background(), `
 		SELECT name, setting, unit, short_desc
 		FROM pg_settings
 		ORDER BY name`)

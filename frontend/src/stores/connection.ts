@@ -1,12 +1,5 @@
 import { create } from 'zustand'
-
-interface ConnectionInfo {
-  host: string
-  port: number
-  user: string
-  database: string
-  version: string
-}
+import type { ConnectionInfo } from '../api/generated'
 
 interface ConnectionState {
   connected: boolean

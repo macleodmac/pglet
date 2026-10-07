@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/macleodmac/pglet/internal/client"
 	"github.com/macleodmac/pglet/internal/service"
 )
 
@@ -14,16 +15,44 @@ func (s *Server) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := s.svc.Connect(req.Url)
+	opts := client.Options{}
+	if req.ReadOnly != nil {
+		opts.ReadOnly = *req.ReadOnly
+	}
+	if req.StatementTimeoutMs != nil {
+		opts.StatementTimeoutMs = *req.StatementTimeoutMs
+	}
+	info, err := s.svc.Connect(req.Url, opts)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ConnectionInfo{
+	writeJSON(w, http.StatusOK, toConnectionInfo(info))
+}
+
+func (s *Server) SetConnectionOptions(w http.ResponseWriter, r *http.Request) {
+	var req ConnectionOptions
+	if err := readJSON(r, &req); err != nil {
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	info, err := s.svc.SetConnectionOptions(client.Options{
+		ReadOnly: req.ReadOnly, StatementTimeoutMs: req.StatementTimeoutMs,
+	})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toConnectionInfo(info))
+}
+
+func toConnectionInfo(info *client.ConnectionInfo) ConnectionInfo {
+	return ConnectionInfo{
 		Host: info.Host, Port: info.Port, User: info.User,
 		Database: info.Database, Version: info.Version,
-	})
+		ReadOnly: &info.Options.ReadOnly, StatementTimeoutMs: &info.Options.StatementTimeoutMs,
+	}
 }
 
 func (s *Server) Disconnect(w http.ResponseWriter, r *http.Request) {
@@ -49,10 +78,7 @@ func (s *Server) SwitchDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ConnectionInfo{
-		Host: info.Host, Port: info.Port, User: info.User,
-		Database: info.Database, Version: info.Version,
-	})
+	writeJSON(w, http.StatusOK, toConnectionInfo(info))
 }
 
 func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
@@ -70,10 +96,7 @@ func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, ConnectionInfo{
-		Host: info.Host, Port: info.Port, User: info.User,
-		Database: info.Database, Version: info.Version,
-	})
+	writeJSON(w, http.StatusOK, toConnectionInfo(info))
 }
 
 func (s *Server) ListDatabases(w http.ResponseWriter, r *http.Request) {
