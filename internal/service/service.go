@@ -14,6 +14,7 @@ var (
 	ErrNotConnected  = errors.New("not connected to database")
 	ErrNoAPIKey      = errors.New("AI API key not configured, set ANTHROPIC_API_KEY environment variable")
 	ErrNoTransaction = errors.New("no open transaction for this tab")
+	ErrTxConflict    = errors.New("the tab opened a transaction while the query ran, so the query's changes were rolled back")
 )
 
 // Service holds all shared state and provides business logic methods.

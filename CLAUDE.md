@@ -55,6 +55,7 @@ Use `pnpm`, not npm.
 - **TanStack Query hooks**: `frontend/src/api/queries.ts` wraps the generated SDK with `unwrap()`.
 - **State split**: server state in TanStack Query, UI state in Zustand, persistent state in bbolt.
 - **Per-tab execution**: query cancellation and transactions are keyed by tab ID in the Service; `components/tabs/useTabExecution.ts` is the frontend side.
+- **Safe writes**: with `safe_writes`, a query outside a transaction runs in a new one that is kept open for review only if `txid_current_if_assigned()` shows it wrote.
 - **Middleware order** (`main.go`): CORS (dev/--cors only) → Recovery → Logging → OpenAPI validation (per-route).
 - **Stories**: Ladle, `*.stories.tsx` next to the component. Global providers live in `frontend/.ladle/components.tsx`.
 

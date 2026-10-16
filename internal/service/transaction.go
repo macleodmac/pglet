@@ -8,10 +8,6 @@ import (
 
 // BeginTransaction opens a transaction for the given tab. If one is already
 // open it is a no-op, keeping the button idempotent.
-//
-// The transaction must outlive the HTTP request that opened it, so it is bound
-// to a detached context — database/sql rolls a transaction back automatically
-// when the context passed to BeginTx is cancelled.
 func (s *Service) BeginTransaction(tabID string) error {
 	cl, err := s.requireClient()
 	if err != nil {
@@ -64,6 +60,17 @@ func (s *Service) getTx(tabID string) (*client.Tx, bool) {
 	defer s.txMu.Unlock()
 	tx, ok := s.txns[tabID]
 	return tx, ok
+}
+
+// storeTx makes tx the tab's open transaction, unless the tab already has one.
+func (s *Service) storeTx(tabID string, tx *client.Tx) bool {
+	s.txMu.Lock()
+	defer s.txMu.Unlock()
+	if _, ok := s.txns[tabID]; ok {
+		return false
+	}
+	s.txns[tabID] = tx
+	return true
 }
 
 // takeTx removes and returns the tab's transaction.

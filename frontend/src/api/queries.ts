@@ -30,6 +30,7 @@ import {
   clearHistory,
   getAppInfo,
   aiGenerate,
+  aiFix,
   aiSuggestions,
   aiTabName,
 } from './client'
@@ -175,7 +176,7 @@ export function useActivity() {
 // Query execution
 export function useRunQuery() {
   return useMutation({
-    mutationFn: async (params: { query: string; tab_id: string }) =>
+    mutationFn: async (params: { query: string; tab_id: string; safe_writes?: boolean }) =>
       unwrap(await runQuery({ body: params })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['history'] })
@@ -302,6 +303,13 @@ export function useAiGenerate() {
       database: string
       messages?: Array<{ role: string; content: string }>
     }) => unwrap(await aiGenerate({ body: params })),
+  })
+}
+
+export function useAiFix() {
+  return useMutation({
+    mutationFn: async (params: { sql: string; error: string }) =>
+      unwrap(await aiFix({ body: params })),
   })
 }
 

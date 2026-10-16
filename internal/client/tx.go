@@ -31,6 +31,14 @@ func (t *Tx) QueryWithContext(ctx context.Context, query string) (*QueryResult, 
 	return runQuery(ctx, t.conn, query)
 }
 
+// HasWrites reports whether the transaction has modified data or taken row
+// locks: PostgreSQL only assigns a transaction ID once it needs one.
+func (t *Tx) HasWrites(ctx context.Context) (bool, error) {
+	var assigned bool
+	err := t.conn.QueryRowContext(ctx, "SELECT txid_current_if_assigned() IS NOT NULL").Scan(&assigned)
+	return assigned, err
+}
+
 // ErrTxAborted is returned by Commit when the transaction had already failed
 // and Postgres rolled it back instead.
 var ErrTxAborted = errors.New("transaction was aborted by an earlier error and has been rolled back")

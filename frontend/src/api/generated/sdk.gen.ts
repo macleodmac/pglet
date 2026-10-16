@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
+import type { AiFixData, AiFixResponses, AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -284,6 +284,18 @@ export const saveTabState = <ThrowOnError extends boolean = false>(options: Opti
  */
 export const aiGenerate = <ThrowOnError extends boolean = false>(options: Options<AiGenerateData, ThrowOnError>) => (options.client ?? client).post<AiGenerateResponses, unknown, ThrowOnError>({
     url: '/api/ai/generate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Fix a query using the error PostgreSQL returned for it
+ */
+export const aiFix = <ThrowOnError extends boolean = false>(options: Options<AiFixData, ThrowOnError>) => (options.client ?? client).post<AiFixResponses, unknown, ThrowOnError>({
+    url: '/api/ai/fix',
     ...options,
     headers: {
         'Content-Type': 'application/json',

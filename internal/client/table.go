@@ -14,6 +14,8 @@ type Column struct {
 	Position     int
 	IsPrimaryKey bool
 	Comment      string
+	References   string // schema.table.column of the foreign key target
+	EnumValues   []string
 }
 
 type TableInfo struct {

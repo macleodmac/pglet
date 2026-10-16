@@ -7,10 +7,13 @@ import (
 	"github.com/macleodmac/pglet/internal/repository"
 )
 
-func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.QueryResult, error) {
+// RunQuery runs a query for a tab, inside the tab's transaction when one is
+// open. Otherwise, with safeWrites, a query that writes is held in a new
+// transaction for the user to commit or roll back, and held is true.
+func (s *Service) RunQuery(ctx context.Context, tabID, query string, safeWrites bool) (result *client.QueryResult, held bool, err error) {
 	cl, err := s.requireClient()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -29,11 +32,10 @@ func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.Qu
 		cancel()
 	}()
 
-	// When the tab has an open transaction, run the query inside it so all
-	// statements share the same session until commit/rollback.
-	var result *client.QueryResult
 	if tx, ok := s.getTx(tabID); ok {
 		result, err = tx.QueryWithContext(ctx, query)
+	} else if safeWrites {
+		result, held, err = s.runGuarded(ctx, cl, tabID, query)
 	} else {
 		result, err = cl.QueryWithContext(ctx, query)
 	}
@@ -44,7 +46,7 @@ func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.Qu
 		if s.Repo != nil {
 			s.Repo.AddHistoryEntry(entry)
 		}
-		return nil, &QueryError{Err: err}
+		return nil, false, &QueryError{Err: err}
 	}
 
 	entry.DurationMs = result.DurationMs
@@ -53,7 +55,37 @@ func (s *Service) RunQuery(ctx context.Context, tabID, query string) (*client.Qu
 		s.Repo.AddHistoryEntry(entry)
 	}
 
-	return result, nil
+	return result, held, nil
+}
+
+// runGuarded runs query in a new transaction. It commits straight away if the
+// query only read, and otherwise leaves the transaction open on the tab.
+func (s *Service) runGuarded(ctx context.Context, cl *client.Client, tabID, query string) (*client.QueryResult, bool, error) {
+	tx, err := cl.Begin(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+
+	result, err := tx.QueryWithContext(ctx, query)
+	if err != nil {
+		tx.Rollback()
+		return nil, false, err
+	}
+
+	wrote, err := tx.HasWrites(ctx)
+	if err != nil {
+		tx.Rollback()
+		return nil, false, err
+	}
+	if !wrote {
+		return result, false, tx.Commit()
+	}
+
+	if !s.storeTx(tabID, tx) {
+		tx.Rollback()
+		return nil, false, ErrTxConflict
+	}
+	return result, true, nil
 }
 
 func (s *Service) ExplainQuery(ctx context.Context, query string) (*client.QueryResult, error) {

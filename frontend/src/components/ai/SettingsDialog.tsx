@@ -1,5 +1,6 @@
 import { useAppInfo } from '../../api/queries'
 import { useThemeStore } from '../../stores/theme'
+import { useSettingsStore } from '../../stores/settings'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -10,6 +11,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
+  const safeWrites = useSettingsStore((s) => s.safeWrites)
+  const setSafeWrites = useSettingsStore((s) => s.setSafeWrites)
 
   const aiKeySet = appInfo?.ai_enabled === true
 
@@ -38,6 +41,20 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </button>
           ))}
         </div>
+
+        <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">Safe writes</p>
+        <label className="mb-4 flex cursor-pointer items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <input
+            type="checkbox"
+            checked={safeWrites}
+            onChange={(e) => setSafeWrites(e.target.checked)}
+            className="mt-0.5 accent-accent-500"
+          />
+          <span>
+            Hold queries that change data, whether typed or AI-generated, in a transaction so you can check the result
+            before you commit or roll back.
+          </span>
+        </label>
 
         <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">AI API Key (Anthropic)</p>
         <p className={`mb-4 text-xs ${aiKeySet ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-500'}`}>

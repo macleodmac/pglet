@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/macleodmac/pglet/internal/client"
 	"github.com/macleodmac/pglet/internal/service"
 )
 
@@ -15,18 +16,23 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query)
+	safeWrites := req.SafeWrites != nil && *req.SafeWrites
+	result, held, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query, safeWrites)
 	inTx := s.svc.InTransaction(req.TabId)
 	if err != nil {
 		var qe *service.QueryError
 		if errors.As(err, &qe) {
 			// Query execution error — return inside 200 OK per API contract
 			errMsg := qe.Error()
-			writeJSON(w, http.StatusOK, QueryResult{
+			res := QueryResult{
 				Columns: []string{}, ColumnTypes: []string{},
 				Rows: [][]CellValue{}, RowCount: 0, DurationMs: 0,
 				Error: &errMsg, InTransaction: &inTx,
-			})
+			}
+			if code := client.SQLState(qe.Err); code != "" {
+				res.ErrorCode = &code
+			}
+			writeJSON(w, http.StatusOK, res)
 			return
 		}
 		writeErr(w, svcStatus(err), err)
@@ -35,6 +41,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 
 	res := toQueryResult(result)
 	res.InTransaction = &inTx
+	res.HeldForReview = &held
 	writeJSON(w, http.StatusOK, res)
 }
 

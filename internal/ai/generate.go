@@ -1,31 +1,50 @@
 package ai
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
+	"maps"
+	"slices"
 	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
 const (
-	DefaultModel     = "claude-haiku-4-5-20251001"
-	DefaultFastModel = "claude-haiku-4-5-20251001"
+	DefaultModel = "claude-haiku-5-5"
 
-	apiURL     = "https://api.anthropic.com/v1/messages"
-	apiVersion = "2023-06-01"
+	maxTokens = 16000
 
 	// selectTablesThreshold is the number of tables above which we pre-filter
 	// to relevant tables before generating SQL.
 	selectTablesThreshold = 20
+
+	maxEnumValues = 30
+	maxCommentLen = 120
+	ellipsis      = "…"
 )
 
-// Column is a minimal column descriptor used for schema context.
+var ErrRefused = errors.New("the model declined this request")
+
+// Table describes a table, view or materialized view for schema context.
+type Table struct {
+	Name    string // schema-qualified
+	Kind    string
+	Comment string
+	Columns []Column
+}
+
+// Column describes a column for schema context.
 type Column struct {
-	Name string
-	Type string
+	Name       string
+	Type       string
+	PrimaryKey bool
+	References string // schema.table.column of the foreign key target
+	EnumValues []string
+	Comment    string
 }
 
 // Message represents a conversation turn.
@@ -34,112 +53,83 @@ type Message struct {
 	Content string
 }
 
-// Client is an Anthropic API client for SQL generation.
+// Client generates SQL with Claude.
 type Client struct {
-	APIKey     string
-	Model      string
-	FastModel  string
-	HTTPClient *http.Client
+	api   anthropic.Client
+	Model string
 }
 
 // NewClient creates a Client with sensible defaults.
 func NewClient(apiKey string) *Client {
 	return &Client{
-		APIKey:     apiKey,
-		Model:      DefaultModel,
-		FastModel:  DefaultFastModel,
-		HTTPClient: http.DefaultClient,
+		api:   anthropic.NewClient(option.WithAPIKey(apiKey)),
+		Model: DefaultModel,
 	}
 }
 
+type sqlResult struct {
+	SQL         string `json:"sql"`
+	Explanation string `json:"explanation"`
+}
+
+var sqlResultSchema = objectSchema(map[string]any{
+	"sql":         map[string]any{"type": "string"},
+	"explanation": map[string]any{"type": "string"},
+})
+
 // GenerateSQL turns a natural-language prompt into a PostgreSQL query.
-// For large schemas (>20 tables) it first selects relevant tables using a fast model.
-func (c *Client) GenerateSQL(ctx context.Context, schema map[string][]Column, prompt string, history []Message) (sql, explanation string, err error) {
+// For large schemas it first selects relevant tables using a cheap call.
+func (c *Client) GenerateSQL(ctx context.Context, schema []Table, prompt string, history []Message) (sql, explanation string, err error) {
 	if len(schema) > selectTablesThreshold {
-		schema = c.selectTables(ctx, schema, prompt)
+		var asked []string
+		for _, m := range history {
+			if m.Role == "user" {
+				asked = append(asked, m.Content)
+			}
+		}
+		schema = c.selectTables(ctx, schema, strings.Join(append(asked, prompt), "\n"))
 	}
 
 	system := fmt.Sprintf(`You are a PostgreSQL SQL query generator. Given a natural language description, generate a valid PostgreSQL query.
 
-Database schema:
+Database schema (PK = primary key, -> = foreign key target):
 %s
 Rules:
 - Generate only valid PostgreSQL SQL
 - Use the exact table and column names from the schema
-- Return a JSON object with "sql" (the query) and "explanation" (brief explanation)
-- Do not include markdown code fences in the SQL
-- If the request is ambiguous, make reasonable assumptions and explain them`, formatSchema(schema))
+- Join along the foreign keys shown, and filter enum columns using only their listed values
+- If the request is ambiguous, make reasonable assumptions and explain them
+- Keep the explanation brief`, formatSchema(schema))
 
-	msgs := buildMessages(history, prompt)
-
-	text, err := c.complete(ctx, c.Model, system, msgs, 2048)
+	res, err := completeJSON[sqlResult](ctx, c, system, buildMessages(history, prompt), anthropic.OutputConfigEffortMedium, sqlResultSchema)
 	if err != nil {
 		return "", "", err
 	}
-
-	var resp struct {
-		SQL         string `json:"sql"`
-		Explanation string `json:"explanation"`
-	}
-	if err := extractJSON(text, &resp); err == nil && resp.SQL != "" {
-		return resp.SQL, resp.Explanation, nil
-	}
-
-	// Fallback: treat the whole response as SQL.
-	return text, "Generated from natural language prompt", nil
+	return res.SQL, res.Explanation, nil
 }
 
-// complete sends a request to the Anthropic messages API.
-func (c *Client) complete(ctx context.Context, model, system string, messages []Message, maxTokens int) (string, error) {
-	apiMsgs := make([]map[string]string, len(messages))
-	for i, m := range messages {
-		apiMsgs[i] = map[string]string{"role": m.Role, "content": m.Content}
+// FixSQL corrects a query given the error PostgreSQL returned for it.
+func (c *Client) FixSQL(ctx context.Context, schema []Table, query, errMsg string) (sql, explanation string, err error) {
+	if len(schema) > selectTablesThreshold {
+		schema = c.selectTables(ctx, schema, query+"\n"+errMsg)
 	}
 
-	body, err := json.Marshal(map[string]any{
-		"model":      model,
-		"max_tokens": maxTokens,
-		"system":     system,
-		"messages":   apiMsgs,
-	})
+	system := fmt.Sprintf(`You fix PostgreSQL queries that failed. Given a query and the error PostgreSQL returned for it, return a corrected query.
+
+Database schema (PK = primary key, -> = foreign key target):
+%s
+Rules:
+- Fix the reported error and anything else in the schema that would stop the query from running
+- Otherwise keep the query's intent, formatting and comments
+- Use the exact table and column names from the schema
+- In the explanation, say briefly what was wrong and what you changed`, formatSchema(schema))
+
+	msgs := []Message{{Role: "user", Content: fmt.Sprintf("Query:\n%s\n\nError:\n%s", query, errMsg)}}
+	res, err := completeJSON[sqlResult](ctx, c, system, msgs, anthropic.OutputConfigEffortMedium, sqlResultSchema)
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+		return "", "", err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", c.APIKey)
-	req.Header.Set("anthropic-version", apiVersion)
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("API request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, respBody)
-	}
-
-	var apiResp struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		return "", fmt.Errorf("parse response: %w", err)
-	}
-	if len(apiResp.Content) == 0 {
-		return "", fmt.Errorf("empty response from API")
-	}
-	return apiResp.Content[0].Text, nil
+	return res.SQL, res.Explanation, nil
 }
 
 // GenerateTabName produces a short (2-4 word) name for a SQL query tab.
@@ -152,22 +142,18 @@ Rules:
 - Use title case
 - Examples: "Active Users", "Monthly Revenue", "Order Details", "Schema Sizes"`
 
-	msgs := []Message{{Role: "user", Content: sql}}
-
-	name, err := c.complete(ctx, c.FastModel, system, msgs, 32)
+	name, err := c.complete(ctx, system, []Message{{Role: "user", Content: sql}}, anthropic.OutputConfigEffortLow, nil)
 	if err != nil {
 		return "", err
 	}
-	// Strip any surrounding quotes the model might add
-	name = strings.Trim(strings.TrimSpace(name), "\"'`")
-	return name, nil
+	return strings.Trim(strings.TrimSpace(name), "\"'`"), nil
 }
 
 // GenerateSuggestions produces 4 contextual query suggestions based on table names.
 func (c *Client) GenerateSuggestions(ctx context.Context, tables []string) ([]string, error) {
 	system := `You generate short, natural-language query suggestions for a PostgreSQL database browser.
 Rules:
-- Return a JSON array of exactly 4 strings
+- Return exactly 4 suggestions
 - Each suggestion should be a natural-language prompt a user might type to generate SQL
 - Use actual table names from the provided list
 - Keep each suggestion under 50 characters
@@ -175,47 +161,46 @@ Rules:
 - Do not include SQL syntax, just natural language`
 
 	msgs := []Message{{Role: "user", Content: "Tables: " + strings.Join(tables, ", ")}}
-
-	text, err := c.complete(ctx, c.FastModel, system, msgs, 256)
+	res, err := completeJSON[struct {
+		Suggestions []string `json:"suggestions"`
+	}](ctx, c, system, msgs, anthropic.OutputConfigEffortLow, objectSchema(map[string]any{
+		"suggestions": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+	}))
 	if err != nil {
 		return nil, err
 	}
-
-	var suggestions []string
-	if err := extractJSON(text, &suggestions); err != nil {
-		return nil, fmt.Errorf("parse suggestions: %w", err)
-	}
-	return suggestions, nil
+	return res.Suggestions, nil
 }
 
-// selectTables asks a fast model which tables are relevant to the prompt.
+// selectTables asks for the tables relevant to the request.
 // Falls back to the full schema on any error.
-func (c *Client) selectTables(ctx context.Context, schema map[string][]Column, prompt string) map[string][]Column {
-	names := make([]string, 0, len(schema))
-	for fqn := range schema {
-		names = append(names, fqn)
+func (c *Client) selectTables(ctx context.Context, schema []Table, request string) []Table {
+	names := make([]string, len(schema))
+	for i, t := range schema {
+		names[i] = t.Name
 	}
 
-	system := `You select which database tables are relevant to a user's query.
-Return ONLY a JSON array of table names (e.g. ["public.users", "public.orders"]).
-Include tables that might be needed for JOINs. When in doubt, include the table.`
+	system := `You select which database tables are relevant to a user's request.
+Return the schema-qualified table names (e.g. "public.users"). Include tables that might be needed for JOINs. When in doubt, include the table.`
 
-	msgs := []Message{{Role: "user", Content: fmt.Sprintf("Tables: %s\n\nQuery: %s", strings.Join(names, ", "), prompt)}}
-
-	text, err := c.complete(ctx, c.FastModel, system, msgs, 512)
-	if err != nil {
+	msgs := []Message{{Role: "user", Content: fmt.Sprintf("Tables: %s\n\nRequest: %s", strings.Join(names, ", "), request)}}
+	res, err := completeJSON[struct {
+		Tables []string `json:"tables"`
+	}](ctx, c, system, msgs, anthropic.OutputConfigEffortLow, objectSchema(map[string]any{
+		"tables": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+	}))
+	if err != nil || len(res.Tables) == 0 {
 		return schema
 	}
 
-	var selected []string
-	if err := extractJSON(text, &selected); err != nil || len(selected) == 0 {
-		return schema
+	selected := make(map[string]bool, len(res.Tables))
+	for _, name := range res.Tables {
+		selected[name] = true
 	}
-
-	filtered := make(map[string][]Column, len(selected))
-	for _, name := range selected {
-		if cols, ok := schema[name]; ok {
-			filtered[name] = cols
+	var filtered []Table
+	for _, t := range schema {
+		if selected[t.Name] {
+			filtered = append(filtered, t)
 		}
 	}
 	if len(filtered) == 0 {
@@ -224,46 +209,133 @@ Include tables that might be needed for JOINs. When in doubt, include the table.
 	return filtered
 }
 
-// extractJSON tries to unmarshal text as JSON. If that fails, it looks for the
-// outermost {...} or [...] substring and tries again.
-func extractJSON[T any](text string, dest *T) error {
-	if err := json.Unmarshal([]byte(text), dest); err == nil {
-		return nil
+func completeJSON[T any](ctx context.Context, c *Client, system string, msgs []Message, effort anthropic.OutputConfigEffort, schema map[string]any) (T, error) {
+	var out T
+	text, err := c.complete(ctx, system, msgs, effort, schema)
+	if err != nil {
+		return out, err
 	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return out, fmt.Errorf("parse response: %w", err)
+	}
+	return out, nil
+}
 
-	for _, pair := range [][2]string{{"{", "}"}, {"[", "]"}} {
-		start := strings.Index(text, pair[0])
-		end := strings.LastIndex(text, pair[1])
-		if start >= 0 && end > start {
-			if err := json.Unmarshal([]byte(text[start:end+1]), dest); err == nil {
-				return nil
-			}
+// complete sends a request to the Messages API and returns the response text.
+// A non-nil schema constrains the response to JSON matching it.
+func (c *Client) complete(ctx context.Context, system string, msgs []Message, effort anthropic.OutputConfigEffort, schema map[string]any) (string, error) {
+	params := anthropic.MessageNewParams{
+		Model:        c.Model,
+		MaxTokens:    maxTokens,
+		System:       []anthropic.TextBlockParam{{Text: system}},
+		Messages:     make([]anthropic.MessageParam, len(msgs)),
+		OutputConfig: anthropic.OutputConfigParam{Effort: effort},
+	}
+	for i, m := range msgs {
+		block := anthropic.NewTextBlock(m.Content)
+		if m.Role == "assistant" {
+			params.Messages[i] = anthropic.NewAssistantMessage(block)
+		} else {
+			params.Messages[i] = anthropic.NewUserMessage(block)
 		}
 	}
-	return fmt.Errorf("no JSON found in response")
+	if schema != nil {
+		params.OutputConfig.Format = anthropic.JSONOutputFormatParam{Schema: schema}
+	}
+
+	resp, err := c.api.Messages.New(ctx, params)
+	if err != nil {
+		return "", err
+	}
+	switch resp.StopReason {
+	case anthropic.StopReasonRefusal:
+		return "", ErrRefused
+	case anthropic.StopReasonMaxTokens:
+		return "", errors.New("response was cut off before it finished")
+	}
+
+	// Thinking blocks can precede the answer, so read text blocks by type.
+	var b strings.Builder
+	for _, block := range resp.Content {
+		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
+			b.WriteString(t.Text)
+		}
+	}
+	if b.Len() == 0 {
+		return "", errors.New("empty response from API")
+	}
+	return b.String(), nil
+}
+
+func objectSchema(properties map[string]any) map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"properties":           properties,
+		"required":             slices.Sorted(maps.Keys(properties)),
+		"additionalProperties": false,
+	}
 }
 
 func buildMessages(history []Message, prompt string) []Message {
 	msgs := make([]Message, 0, len(history)+1)
 	msgs = append(msgs, history...)
-	msgs = append(msgs, Message{Role: "user", Content: prompt})
-	return msgs
+	return append(msgs, Message{Role: "user", Content: prompt})
 }
 
-func formatSchema(schema map[string][]Column) string {
+// formatSchema renders tables one column per line, e.g.
+//
+//	public.orders (table) -- customer orders
+//	  id int8 PK
+//	  user_id int8 -> public.users.id
+//	  status order_status enum('pending', 'paid')
+func formatSchema(schema []Table) string {
 	var b strings.Builder
-	for fqn, cols := range schema {
-		b.WriteString(fqn)
-		b.WriteByte('(')
-		for i, c := range cols {
-			if i > 0 {
-				b.WriteString(", ")
+	for _, t := range schema {
+		fmt.Fprintf(&b, "%s (%s)", t.Name, t.Kind)
+		writeComment(&b, t.Comment)
+		b.WriteByte('\n')
+		for _, col := range t.Columns {
+			fmt.Fprintf(&b, "  %s %s", col.Name, shortType(col.Type))
+			if col.PrimaryKey {
+				b.WriteString(" PK")
 			}
-			fmt.Fprintf(&b, "%s %s", c.Name, shortType(c.Type))
+			if col.References != "" {
+				b.WriteString(" -> " + col.References)
+			}
+			if len(col.EnumValues) > 0 {
+				writeEnum(&b, col.EnumValues)
+			}
+			writeComment(&b, col.Comment)
+			b.WriteByte('\n')
 		}
-		b.WriteString(")\n")
 	}
 	return b.String()
+}
+
+func writeEnum(b *strings.Builder, values []string) {
+	b.WriteString(" enum(")
+	for i, v := range values {
+		if i == maxEnumValues {
+			b.WriteString(", " + ellipsis)
+			break
+		}
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString("'" + strings.ReplaceAll(v, "'", "''") + "'")
+	}
+	b.WriteByte(')')
+}
+
+func writeComment(b *strings.Builder, comment string) {
+	comment = strings.Join(strings.Fields(comment), " ")
+	if comment == "" {
+		return
+	}
+	if r := []rune(comment); len(r) > maxCommentLen {
+		comment = string(r[:maxCommentLen]) + ellipsis
+	}
+	b.WriteString(" -- " + comment)
 }
 
 func shortType(t string) string {

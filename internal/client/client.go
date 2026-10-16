@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/lib/pq"
 )
 
 type Client struct {
@@ -151,16 +151,44 @@ func runQuery(ctx context.Context, conn *sql.Conn, query string) (*QueryResult, 
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, withDetail(err)
 	}
 	result.DurationMs = time.Since(start).Milliseconds()
 	return result, nil
 }
 
+// detailedError carries PostgreSQL's DETAIL, HINT and error position, which
+// usually say exactly what is wrong with a query.
+type detailedError struct {
+	msg string
+	err error
+}
+
+func (e *detailedError) Error() string { return e.msg }
+func (e *detailedError) Unwrap() error { return e.err }
+
+func withDetail(err error) error {
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) {
+		return err
+	}
+	return &detailedError{msg: pqErr.ErrorWithDetail(), err: err}
+}
+
+// SQLState returns the PostgreSQL error code of err, or "" if it has none.
+func SQLState(err error) string {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return string(pqErr.Code)
+	}
+	return ""
+}
+
 // readRows reads the first result set. The command tag is captured before the
 // rows are closed so it describes that result set, not a later statement.
 func readRows(rows driver.Rows) (*QueryResult, error) {
-	columns := rows.Columns()
+	// Non-nil so statements without a result set encode as [] rather than null.
+	columns := append([]string{}, rows.Columns()...)
 	typeNames := make([]string, len(columns))
 	if typed, ok := rows.(driver.RowsColumnTypeDatabaseTypeName); ok {
 		for i := range columns {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,6 +68,9 @@ func TestQueryCommandTags(t *testing.T) {
 			}
 			if res.RowCount != tt.rows {
 				t.Errorf("rows = %d, want %d", res.RowCount, tt.rows)
+			}
+			if res.Columns == nil {
+				t.Error("columns = nil, want empty slice")
 			}
 		})
 	}
@@ -148,6 +153,26 @@ func TestTransaction(t *testing.T) {
 		}
 	})
 
+	t.Run("only writes assign a transaction ID", func(t *testing.T) {
+		tx, err := c.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if _, err := tx.QueryWithContext(ctx, "SELECT * FROM tx_test"); err != nil {
+			t.Fatal(err)
+		}
+		if wrote, err := tx.HasWrites(ctx); err != nil || wrote {
+			t.Errorf("after SELECT: HasWrites = %v, %v; want false", wrote, err)
+		}
+		if _, err := tx.QueryWithContext(ctx, "DELETE FROM tx_test"); err != nil {
+			t.Fatal(err)
+		}
+		if wrote, err := tx.HasWrites(ctx); err != nil || !wrote {
+			t.Errorf("after DELETE: HasWrites = %v, %v; want true", wrote, err)
+		}
+	})
+
 	t.Run("commit of aborted transaction reports rollback", func(t *testing.T) {
 		tx, err := c.Begin(ctx)
 		if err != nil {
@@ -166,6 +191,84 @@ func TestTransaction(t *testing.T) {
 			t.Errorf("count = %s, want 1", got)
 		}
 	})
+}
+
+func TestQueryErrorDetail(t *testing.T) {
+	c := testClient(t)
+	_, err := c.QueryWithContext(context.Background(), "SELECT datnmae FROM pg_database")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "HINT") || !strings.Contains(err.Error(), "^") {
+		t.Errorf("error lacks hint and position: %v", err)
+	}
+	if got := SQLState(err); got != "42703" {
+		t.Errorf("SQLState = %q, want 42703", got)
+	}
+}
+
+func TestRelations(t *testing.T) {
+	c := testClient(t)
+	ctx := context.Background()
+	if _, err := c.QueryWithContext(ctx, `
+		DROP SCHEMA IF EXISTS relations_test CASCADE;
+		CREATE SCHEMA relations_test;
+		CREATE TYPE relations_test.status AS ENUM ('new', 'done');
+		CREATE TABLE relations_test.users (id int PRIMARY KEY, email text);
+		CREATE TABLE relations_test.tasks (
+			id int PRIMARY KEY,
+			owner_id int REFERENCES relations_test.users(id),
+			status relations_test.status,
+			title varchar(80)
+		);
+		COMMENT ON TABLE relations_test.tasks IS 'Work items';
+		COMMENT ON COLUMN relations_test.tasks.title IS 'Short title';
+		CREATE VIEW relations_test.open_tasks AS SELECT * FROM relations_test.tasks WHERE status = 'new';
+		CREATE TABLE relations_test.events (id int, at date) PARTITION BY RANGE (at);
+		CREATE TABLE relations_test.events_2026 PARTITION OF relations_test.events
+			FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.QueryWithContext(ctx, "DROP SCHEMA IF EXISTS relations_test CASCADE") })
+
+	rels, err := c.Relations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Relation{}
+	for _, r := range rels {
+		if r.Schema == "relations_test" {
+			byName[r.Name] = r
+		}
+	}
+
+	if _, ok := byName["events_2026"]; ok {
+		t.Error("partition listed alongside its parent")
+	}
+	if got := byName["open_tasks"].Kind; got != "view" {
+		t.Errorf("open_tasks kind = %q, want view", got)
+	}
+
+	tasks := byName["tasks"]
+	if tasks.Kind != "table" || tasks.Comment != "Work items" {
+		t.Errorf("tasks = %q %q, want table with comment", tasks.Kind, tasks.Comment)
+	}
+	cols := map[string]Column{}
+	for _, col := range tasks.Columns {
+		cols[col.Name] = col
+	}
+	if !cols["id"].IsPrimaryKey || cols["owner_id"].IsPrimaryKey {
+		t.Error("primary key flags wrong")
+	}
+	if got := cols["owner_id"].References; got != "relations_test.users.id" {
+		t.Errorf("owner_id references %q", got)
+	}
+	if got := cols["status"].EnumValues; !slices.Equal(got, []string{"new", "done"}) {
+		t.Errorf("status enum values = %v", got)
+	}
+	if got := cols["title"]; got.Type != "character varying(80)" || got.Comment != "Short title" {
+		t.Errorf("title = %q %q", got.Type, got.Comment)
+	}
 }
 
 func ptr(n int64) *int64 { return &n }

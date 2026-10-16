@@ -9,20 +9,33 @@ import (
 )
 
 func (s *Service) GenerateSQL(ctx context.Context, prompt string, messages []ai.Message) (sql, explanation string, err error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		return "", "", ErrNoAPIKey
+	aiClient, err := s.aiClient()
+	if err != nil {
+		return "", "", err
 	}
-
-	schema := s.buildSchema()
-	aiClient := ai.NewClient(apiKey)
+	schema, err := s.schemaContext(ctx)
+	if err != nil {
+		return "", "", err
+	}
 	return aiClient.GenerateSQL(ctx, schema, prompt, messages)
 }
 
+func (s *Service) FixSQL(ctx context.Context, query, errMsg string) (sql, explanation string, err error) {
+	aiClient, err := s.aiClient()
+	if err != nil {
+		return "", "", err
+	}
+	schema, err := s.schemaContext(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	return aiClient.FixSQL(ctx, schema, query, errMsg)
+}
+
 func (s *Service) AISuggestions(ctx context.Context) ([]string, error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		return nil, ErrNoAPIKey
+	aiClient, err := s.aiClient()
+	if err != nil {
+		return nil, err
 	}
 
 	cl, err := s.requireClient()
@@ -30,27 +43,24 @@ func (s *Service) AISuggestions(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	allCols, err := cl.AllTableColumns()
+	rels, err := cl.Relations(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	tables := make([]string, 0, len(allCols))
-	for fqn := range allCols {
-		tables = append(tables, fqn)
+	tables := make([]string, len(rels))
+	for i, r := range rels {
+		tables[i] = r.Schema + "." + r.Name
 	}
-
-	aiClient := ai.NewClient(apiKey)
 	return aiClient.GenerateSuggestions(ctx, tables)
 }
 
 func (s *Service) AITabName(ctx context.Context, sql string) (string, error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
+	aiClient, err := s.aiClient()
+	if err != nil {
 		return HeuristicTabName(sql), nil
 	}
 
-	aiClient := ai.NewClient(apiKey)
 	name, err := aiClient.GenerateTabName(ctx, sql)
 	if err != nil {
 		return HeuristicTabName(sql), nil
@@ -58,24 +68,42 @@ func (s *Service) AITabName(ctx context.Context, sql string) (string, error) {
 	return name, nil
 }
 
-func (s *Service) buildSchema() map[string][]ai.Column {
-	schema := make(map[string][]ai.Column)
+func (s *Service) aiClient() (*ai.Client, error) {
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		return nil, ErrNoAPIKey
+	}
+	return ai.NewClient(apiKey), nil
+}
+
+// schemaContext describes the connected database for prompts. It is empty
+// when not connected, so generation still works without a schema.
+func (s *Service) schemaContext(ctx context.Context) ([]ai.Table, error) {
 	cl := s.GetClient()
 	if cl == nil {
-		return schema
+		return nil, nil
 	}
-	allCols, err := cl.AllTableColumns()
+	rels, err := cl.Relations(ctx)
 	if err != nil {
-		return schema
+		return nil, err
 	}
-	for fqn, cols := range allCols {
-		aiCols := make([]ai.Column, len(cols))
-		for i, col := range cols {
-			aiCols[i] = ai.Column{Name: col.Name, Type: col.Type}
+
+	tables := make([]ai.Table, len(rels))
+	for i, r := range rels {
+		cols := make([]ai.Column, len(r.Columns))
+		for j, c := range r.Columns {
+			cols[j] = ai.Column{
+				Name:       c.Name,
+				Type:       c.Type,
+				PrimaryKey: c.IsPrimaryKey,
+				References: c.References,
+				EnumValues: c.EnumValues,
+				Comment:    c.Comment,
+			}
 		}
-		schema[fqn] = aiCols
+		tables[i] = ai.Table{Name: r.Schema + "." + r.Name, Kind: r.Kind, Comment: r.Comment, Columns: cols}
 	}
-	return schema
+	return tables, nil
 }
 
 // HeuristicTabName extracts a short name from SQL without AI.

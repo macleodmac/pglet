@@ -4,7 +4,10 @@ import { DataGrid } from '../results/DataGrid'
 import { ExplainPlan, isExplainResult } from '../results/ExplainPlan'
 import { QueryResultsEmpty } from '../results/QueryResultsEmpty'
 import { CommandResult, resultSummary } from '../results/CommandResult'
+import { QueryErrorPanel, isFixableError } from '../results/QueryErrorPanel'
 import { Icon } from '../ui/Icon'
+import { useAppInfo } from '../../api/queries'
+import { useSettingsStore } from '../../stores/settings'
 import type { TabExecution } from './useTabExecution'
 
 async function downloadExport(query: string, format: 'csv' | 'json') {
@@ -41,7 +44,10 @@ export function ResultsPanel({
   editorRef: RefObject<SqlEditorHandle | null>
   onSave: () => void
 }) {
-  const { result, isRunning, txPending } = execution
+  const { result, isRunning, txPending, heldWrite, fix } = execution
+  const { data: appInfo } = useAppInfo()
+  const safeWrites = useSettingsStore((s) => s.safeWrites)
+  const setSafeWrites = useSettingsStore((s) => s.setSafeWrites)
   const showStats = result && !result.error && !isExplainResult(result.columns)
 
   return (
@@ -84,6 +90,24 @@ export function ResultsPanel({
           onCommit={execution.commit}
           onRollback={execution.rollback}
         />
+        <button
+          type="button"
+          onClick={() => setSafeWrites(!safeWrites)}
+          aria-pressed={safeWrites}
+          className={`${txButtonBase} ${
+            safeWrites
+              ? 'border-success/40 bg-success/10 text-success'
+              : 'border-surface-300 text-gray-500 hover:bg-surface-100 dark:border-surface-700 dark:text-gray-400 dark:hover:bg-surface-800'
+          }`}
+          title={
+            safeWrites
+              ? 'Safe writes on: queries that change data are held in a transaction until you commit'
+              : 'Safe writes off: queries that change data are committed immediately'
+          }
+        >
+          <Icon name="shield" className="h-3 w-3" />
+          Safe writes
+        </button>
 
         {showStats && (
           <span className="ml-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
@@ -136,9 +160,28 @@ export function ResultsPanel({
         </div>
       </div>
 
+      {heldWrite && (
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          <Icon name="shield" className="h-3 w-3 flex-shrink-0 text-amber-500" />
+          <p>
+            <span className="font-medium">{resultSummary(heldWrite)}</span>, held in a transaction and not saved yet.
+            Check the result with more queries, then commit or roll back.
+          </p>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-auto">
         {result?.error ? (
-          <div className="p-3 text-sm text-danger dark:text-danger">{result.error}</div>
+          <QueryErrorPanel
+            error={result.error}
+            canFix={!!appInfo?.ai_enabled && isFixableError(result.error_code)}
+            isFixing={fix.isPending}
+            fix={fix.data ?? null}
+            fixError={fix.error?.message ?? null}
+            onFix={execution.requestFix}
+            onApply={execution.applyFix}
+            onDismiss={fix.reset}
+          />
         ) : result && isExplainResult(result.columns) ? (
           <ExplainPlan rows={result.rows} durationMs={result.duration_ms} />
         ) : result && result.columns.length === 0 ? (

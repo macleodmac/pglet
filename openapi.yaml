@@ -625,6 +625,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/AiGenerateResponse'
 
+  /api/ai/fix:
+    post:
+      operationId: aiFix
+      summary: Fix a query using the error PostgreSQL returned for it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiFixRequest'
+      responses:
+        '200':
+          description: Corrected SQL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiGenerateResponse'
+
   /api/ai/suggestions:
     get:
       operationId: aiSuggestions
@@ -849,9 +867,15 @@ components:
           format: int64
         error:
           type: string
+        error_code:
+          type: string
+          description: PostgreSQL SQLSTATE of the error, if any.
         in_transaction:
           type: boolean
           description: Whether the tab has an open transaction after this query.
+        held_for_review:
+          type: boolean
+          description: The query wrote data and safe writes held it in a new transaction awaiting commit or rollback.
         command_tag:
           type: string
           description: Verb of the executed command, e.g. SELECT, UPDATE, CREATE TABLE.
@@ -894,6 +918,9 @@ components:
           type: string
         tab_id:
           type: string
+        safe_writes:
+          type: boolean
+          description: Outside an open transaction, hold any writes in a new transaction for review.
 
     CancelRequest:
       type: object
@@ -1071,6 +1098,15 @@ components:
         sql:
           type: string
         explanation:
+          type: string
+
+    AiFixRequest:
+      type: object
+      required: [sql, error]
+      properties:
+        sql:
+          type: string
+        error:
           type: string
 
     AiMessage:

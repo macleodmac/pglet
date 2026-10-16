@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/macleodmac/pglet/internal/ai"
 	"github.com/macleodmac/pglet/internal/client"
 	"github.com/macleodmac/pglet/internal/service"
 )
@@ -239,6 +240,12 @@ func svcStatus(err error) int {
 	if errors.Is(err, service.ErrNotConnected) || errors.Is(err, service.ErrNoTransaction) ||
 		errors.Is(err, client.ErrTxAborted) {
 		return http.StatusBadRequest
+	}
+	if errors.Is(err, service.ErrTxConflict) {
+		return http.StatusConflict
+	}
+	if errors.Is(err, ai.ErrRefused) {
+		return http.StatusUnprocessableEntity
 	}
 	return http.StatusInternalServerError
 }

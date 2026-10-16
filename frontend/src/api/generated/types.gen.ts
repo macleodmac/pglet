@@ -93,9 +93,17 @@ export type QueryResult = {
     duration_ms: number;
     error?: string;
     /**
+     * PostgreSQL SQLSTATE of the error, if any.
+     */
+    error_code?: string;
+    /**
      * Whether the tab has an open transaction after this query.
      */
     in_transaction?: boolean;
+    /**
+     * The query wrote data and safe writes held it in a new transaction awaiting commit or rollback.
+     */
+    held_for_review?: boolean;
     /**
      * Verb of the executed command, e.g. SELECT, UPDATE, CREATE TABLE.
      */
@@ -118,6 +126,10 @@ export type TableRowsResult = {
 export type QueryRequest = {
     query: string;
     tab_id: string;
+    /**
+     * Outside an open transaction, hold any writes in a new transaction for review.
+     */
+    safe_writes?: boolean;
 };
 
 export type CancelRequest = {
@@ -212,6 +224,11 @@ export type AiGenerateRequest = {
 export type AiGenerateResponse = {
     sql: string;
     explanation: string;
+};
+
+export type AiFixRequest = {
+    sql: string;
+    error: string;
 };
 
 export type AiMessage = {
@@ -844,6 +861,22 @@ export type AiGenerateResponses = {
 };
 
 export type AiGenerateResponse2 = AiGenerateResponses[keyof AiGenerateResponses];
+
+export type AiFixData = {
+    body: AiFixRequest;
+    path?: never;
+    query?: never;
+    url: '/api/ai/fix';
+};
+
+export type AiFixResponses = {
+    /**
+     * Corrected SQL
+     */
+    200: AiGenerateResponse;
+};
+
+export type AiFixResponse = AiFixResponses[keyof AiFixResponses];
 
 export type AiSuggestionsData = {
     body?: never;

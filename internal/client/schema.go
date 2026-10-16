@@ -1,5 +1,11 @@
 package client
 
+import (
+	"context"
+
+	"github.com/lib/pq"
+)
+
 type SchemaObject struct {
 	Name    string
 	Schema  string
@@ -166,32 +172,83 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 	return result, nil
 }
 
-// AllTableColumns fetches column names and types for all user tables in one query.
-// Returns a map keyed by "schema.table" with slices of column name+type pairs.
-func (c *Client) AllTableColumns() (map[string][]Column, error) {
-	rows, err := c.db.Query(`
-		SELECT c.table_schema, c.table_name, c.column_name, c.data_type
-		FROM information_schema.columns c
-		JOIN information_schema.tables t
-		  ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-		WHERE t.table_type = 'BASE TABLE'
-		  AND c.table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-		ORDER BY c.table_schema, c.table_name, c.ordinal_position`)
+// Relation is a table, view, materialized view or foreign table.
+type Relation struct {
+	Schema  string
+	Name    string
+	Kind    string
+	Comment string
+	Columns []Column
+}
+
+// Relations describes every user table, view, materialized view and foreign
+// table, with primary keys, foreign key targets and enum values per column.
+// Partitions are omitted in favour of their parent.
+func (c *Client) Relations(ctx context.Context) ([]Relation, error) {
+	rows, err := c.db.QueryContext(ctx, `
+		SELECT
+			n.nspname,
+			c.relname,
+			CASE c.relkind
+				WHEN 'v' THEN 'view'
+				WHEN 'm' THEN 'materialized view'
+				WHEN 'f' THEN 'foreign table'
+				ELSE 'table'
+			END,
+			COALESCE(obj_description(c.oid, 'pg_class'), ''),
+			a.attname,
+			format_type(a.atttypid, a.atttypmod),
+			COALESCE(col_description(c.oid, a.attnum), ''),
+			EXISTS (
+				SELECT 1 FROM pg_constraint pk
+				WHERE pk.conrelid = c.oid AND pk.contype = 'p' AND a.attnum = ANY (pk.conkey)
+			),
+			COALESCE(fk.ref, ''),
+			en.vals
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+		LEFT JOIN LATERAL (
+			SELECT rn.nspname || '.' || rc.relname || '.' || ra.attname AS ref
+			FROM pg_constraint con
+			CROSS JOIN LATERAL unnest(con.conkey, con.confkey) AS k(col, refcol)
+			JOIN pg_class rc ON rc.oid = con.confrelid
+			JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+			JOIN pg_attribute ra ON ra.attrelid = con.confrelid AND ra.attnum = k.refcol
+			WHERE con.conrelid = c.oid AND con.contype = 'f' AND k.col = a.attnum
+			LIMIT 1
+		) fk ON true
+		LEFT JOIN LATERAL (
+			SELECT array_agg(e.enumlabel ORDER BY e.enumsortorder) AS vals
+			FROM pg_enum e
+			WHERE e.enumtypid = a.atttypid
+		) en ON true
+		WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+		  AND NOT c.relispartition
+		  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+		  AND n.nspname NOT LIKE 'pg\_toast%'
+		  AND n.nspname NOT LIKE 'pg\_temp%'
+		ORDER BY n.nspname, c.relname, a.attnum`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string][]Column)
+	var rels []Relation
 	for rows.Next() {
-		var schema, table, colName, colType string
-		if err := rows.Scan(&schema, &table, &colName, &colType); err != nil {
+		var rel Relation
+		var col Column
+		if err := rows.Scan(&rel.Schema, &rel.Name, &rel.Kind, &rel.Comment,
+			&col.Name, &col.Type, &col.Comment, &col.IsPrimaryKey, &col.References, pq.Array(&col.EnumValues)); err != nil {
 			return nil, err
 		}
-		key := schema + "." + table
-		result[key] = append(result[key], Column{Name: colName, Type: colType})
+		if n := len(rels); n == 0 || rels[n-1].Schema != rel.Schema || rels[n-1].Name != rel.Name {
+			rels = append(rels, rel)
+		}
+		last := &rels[len(rels)-1]
+		last.Columns = append(last.Columns, col)
 	}
-	return result, rows.Err()
+	return rels, rows.Err()
 }
 
 type FunctionDefinition struct {

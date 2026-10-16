@@ -29,6 +29,22 @@ func (s *Server) AiGenerate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, AiGenerateResponse{Sql: sql, Explanation: explanation})
 }
 
+func (s *Server) AiFix(w http.ResponseWriter, r *http.Request) {
+	var req AiFixRequest
+	if err := readJSON(r, &req); err != nil {
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	sql, explanation, err := s.svc.FixSQL(r.Context(), req.Sql, req.Error)
+	if err != nil {
+		writeErr(w, svcStatus(err), err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, AiGenerateResponse{Sql: sql, Explanation: explanation})
+}
+
 func (s *Server) AiSuggestions(w http.ResponseWriter, r *http.Request) {
 	suggestions, err := s.svc.AISuggestions(r.Context())
 	if err != nil {
