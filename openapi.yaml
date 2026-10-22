@@ -840,7 +840,6 @@ components:
     CellValue:
       type: string
       nullable: true
-      x-go-type: '*string'
 
     QueryResult:
       type: object

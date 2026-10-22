@@ -219,10 +219,10 @@ func toQueryResult(qr *client.QueryResult) QueryResult {
 	return res
 }
 
-func toNullableRows(rows [][]any) [][]CellValue {
-	result := make([][]CellValue, len(rows))
+func toNullableRows(rows [][]any) [][]*CellValue {
+	result := make([][]*CellValue, len(rows))
 	for i, row := range rows {
-		result[i] = make([]CellValue, len(row))
+		result[i] = make([]*CellValue, len(row))
 		for j, v := range row {
 			if v == nil {
 				result[i][j] = nil

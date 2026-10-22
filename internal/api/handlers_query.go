@@ -26,7 +26,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 			errMsg := qe.Error()
 			res := QueryResult{
 				Columns: []string{}, ColumnTypes: []string{},
-				Rows: [][]CellValue{}, RowCount: 0, DurationMs: 0,
+				Rows: [][]*CellValue{}, RowCount: 0, DurationMs: 0,
 				Error: &errMsg, InTransaction: &inTx,
 			}
 			if code := client.SQLState(qe.Err); code != "" {

@@ -62,7 +62,7 @@ Use `pnpm`, not npm.
 ## Gotchas
 
 - oapi-codegen requires OpenAPI **3.0.3** (not 3.1.0)
-- `CellValue` needs `x-go-type: '*string'` + `type: string, nullable: true`
+- oapi-codegen already pointer-wraps nullable array items (`CellValue` rows → `[][]*CellValue`); adding `x-go-type: '*T'` yields `**T`
 - `StdHTTPServerOptions.BaseURL` must be `""` not `"/"` (Go 1.22+ ServeMux rejects double-slash paths)
 - react-resizable-panels v4: exports are `Group`, `Panel`, `Separator`; use `orientation` not `direction`; strings like `"18%"` for percentages
 - Tailwind's `@import` in `index.css` pins `source("..")`; Ladle runs Vite from its own root, so auto-detection would find no classes
