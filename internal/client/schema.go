@@ -22,8 +22,8 @@ type SchemaGroup struct {
 	Types             []SchemaObject
 }
 
-func (c *Client) Schemas() ([]string, error) {
-	rows, err := c.db.Query(`
+func (c *Client) Schemas(ctx context.Context) ([]string, error) {
+	rows, err := c.db.QueryContext(ctx, `
 		SELECT schema_name FROM information_schema.schemata
 		WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
 		ORDER BY schema_name`)
@@ -43,7 +43,7 @@ func (c *Client) Schemas() ([]string, error) {
 	return schemas, rows.Err()
 }
 
-func (c *Client) Objects() (map[string]*SchemaGroup, error) {
+func (c *Client) Objects(ctx context.Context) (map[string]*SchemaGroup, error) {
 	result := make(map[string]*SchemaGroup)
 
 	ensureGroup := func(schema string) *SchemaGroup {
@@ -56,12 +56,14 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 	}
 
 	// Tables and views
-	rows, err := c.db.Query(`
-		SELECT table_schema, table_name, table_type,
-			COALESCE(obj_description((table_schema || '.' || table_name)::regclass), '')
-		FROM information_schema.tables
-		WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-		ORDER BY table_schema, table_name`)
+	rows, err := c.db.QueryContext(ctx, `
+		SELECT t.table_schema, t.table_name, t.table_type,
+			COALESCE(obj_description(c.oid, 'pg_class'), '')
+		FROM information_schema.tables t
+		LEFT JOIN pg_namespace n ON n.nspname = t.table_schema
+		LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = t.table_name
+		WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+		ORDER BY t.table_schema, t.table_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -73,10 +75,11 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 		}
 		g := ensureGroup(schema)
 		obj := SchemaObject{Name: name, Schema: schema, Comment: comment}
-		if tableType == "BASE TABLE" {
+		switch tableType {
+		case "BASE TABLE":
 			obj.Type = "table"
 			g.Tables = append(g.Tables, obj)
-		} else if tableType == "VIEW" {
+		case "VIEW":
 			obj.Type = "view"
 			g.Views = append(g.Views, obj)
 		}
@@ -86,7 +89,7 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 	}
 
 	// Materialized views
-	mvRows, err := c.db.Query(`
+	mvRows, err := c.db.QueryContext(ctx, `
 		SELECT schemaname, matviewname
 		FROM pg_matviews
 		WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
@@ -106,7 +109,7 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 	}
 
 	// Functions
-	fnRows, err := c.db.Query(`
+	fnRows, err := c.db.QueryContext(ctx, `
 		SELECT n.nspname, p.proname,
 			CASE p.prokind WHEN 'f' THEN 'function' WHEN 'p' THEN 'procedure' ELSE 'function' END
 		FROM pg_proc p
@@ -128,7 +131,7 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 	}
 
 	// Sequences
-	seqRows, err := c.db.Query(`
+	seqRows, err := c.db.QueryContext(ctx, `
 		SELECT sequence_schema, sequence_name
 		FROM information_schema.sequences
 		WHERE sequence_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
@@ -148,7 +151,7 @@ func (c *Client) Objects() (map[string]*SchemaGroup, error) {
 	}
 
 	// Types
-	typeRows, err := c.db.Query(`
+	typeRows, err := c.db.QueryContext(ctx, `
 		SELECT n.nspname, t.typname
 		FROM pg_type t
 		JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -262,9 +265,9 @@ type FunctionDefinition struct {
 	Kind       string
 }
 
-func (c *Client) FunctionDefinition(schema, name string) (*FunctionDefinition, error) {
+func (c *Client) FunctionDefinition(ctx context.Context, schema, name string) (*FunctionDefinition, error) {
 	fd := &FunctionDefinition{}
-	err := c.db.QueryRow(`
+	err := c.db.QueryRowContext(ctx, `
 		SELECT p.proname, n.nspname, pg_get_functiondef(p.oid),
 			l.lanname, pg_get_function_arguments(p.oid),
 			COALESCE(pg_get_function_result(p.oid), ''),

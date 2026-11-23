@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useConnect } from '../../api/queries'
+import { listSavedConnections, saveConnections, type SavedConnection } from '../../api/client'
 import { useConnectionStore } from '../../stores/connection'
 import { useTabStore } from '../../stores/tabs'
 
-interface SavedConnection {
-  name: string
-  url: string
-}
+/** Where older versions kept saved connections, passwords included. */
+const LEGACY_STORAGE_KEY = 'pglet-connections'
 
-const STORAGE_KEY = 'pglet-connections'
-
-function loadSaved(): SavedConnection[] {
+/** Saved connections live in the server's store; anything left in localStorage is moved there. */
+async function loadSaved(): Promise<SavedConnection[]> {
+  const res = await listSavedConnections()
+  const saved = res.data?.connections ?? []
+  let legacy: SavedConnection[] = []
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    legacy = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY) || '[]')
   } catch {
-    return []
+    // unreadable legacy data is dropped below
   }
+  if (!res.data) return saved
+  const merged = [...saved, ...legacy.filter((l) => !saved.some((c) => c.url === l.url))]
+  if (merged.length > saved.length) {
+    const put = await saveConnections({ body: { connections: merged } })
+    if (put.error) return saved
+  }
+  localStorage.removeItem(LEGACY_STORAGE_KEY)
+  return merged
 }
 
 function persistSaved(connections: SavedConnection[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(connections))
+  saveConnections({ body: { connections } })
 }
 
 /** Derive a display name from a postgres URL */
@@ -37,7 +46,7 @@ function nameFromUrl(raw: string): string {
 
 export function ConnectionDialog() {
   const [url, setUrl] = useState('postgres://localhost:5432/postgres')
-  const [saved, setSaved] = useState<SavedConnection[]>(loadSaved)
+  const [saved, setSaved] = useState<SavedConnection[]>([])
   const [editingName, setEditingName] = useState<string | null>(null)
   const [nameInput, setNameInput] = useState('')
   const connect = useConnect()
@@ -46,9 +55,9 @@ export function ConnectionDialog() {
   const urlInputRef = useRef<HTMLInputElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
-  // Focus URL input on mount
   useEffect(() => {
     urlInputRef.current?.focus()
+    loadSaved().then(setSaved)
   }, [])
 
   // Focus name input when editing starts

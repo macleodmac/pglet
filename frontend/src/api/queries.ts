@@ -1,5 +1,6 @@
 import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query'
 import { queryClient } from './queryClient'
+import { useTabStore } from '../stores/tabs'
 import {
   connect,
   disconnect,
@@ -23,6 +24,7 @@ import {
   commitTransaction,
   rollbackTransaction,
   listSavedQueries,
+  getSavedQuery,
   createSavedQuery,
   updateSavedQuery,
   deleteSavedQuery,
@@ -53,9 +55,19 @@ export function useConnectionInfo() {
   })
 }
 
+/**
+ * Connecting or switching database rolls back every open transaction on the
+ * server and makes all cached schema and rows stale.
+ */
+function afterConnectionChange() {
+  queryClient.resetQueries()
+  useTabStore.getState().syncOpenTransactions()
+}
+
 export function useConnect() {
   return useMutation({
     mutationFn: async (url: string) => unwrap(await connect({ body: { url } })),
+    onSuccess: afterConnectionChange,
   })
 }
 
@@ -69,10 +81,7 @@ export function useSwitchDatabase() {
   return useMutation({
     mutationFn: async (database: string) =>
       unwrap(await switchDatabase({ body: { database } })),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['objects'] })
-      queryClient.invalidateQueries({ queryKey: ['schemas'] })
-    },
+    onSuccess: afterConnectionChange,
   })
 }
 
@@ -239,6 +248,15 @@ export function useSavedQueries(database?: string) {
   })
 }
 
+export function useSavedQuery(id: string | undefined) {
+  return useQuery({
+    queryKey: ['saved-query', id],
+    queryFn: async () => unwrap(await getSavedQuery({ path: { id: id! } })),
+    enabled: !!id,
+    retry: false,
+  })
+}
+
 export function useCreateSavedQuery() {
   return useMutation({
     mutationFn: async (q: SavedQueryInput) =>
@@ -251,7 +269,10 @@ export function useUpdateSavedQuery() {
   return useMutation({
     mutationFn: async (q: { id: string } & SavedQueryInput) =>
       unwrap(await updateSavedQuery({ path: { id: q.id }, body: q })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['saved-queries'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['saved-queries'] })
+      queryClient.invalidateQueries({ queryKey: ['saved-query'] })
+    },
   })
 }
 

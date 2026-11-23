@@ -112,6 +112,10 @@ export type QueryResult = {
      * Rows inserted/updated/deleted/returned; null for commands that report no count.
      */
     rows_affected?: number | null;
+    /**
+     * The result had more rows than the server keeps; only the first ones are in rows.
+     */
+    truncated?: boolean;
 };
 
 export type TableRowsResult = {
@@ -142,6 +146,19 @@ export type TransactionRequest = {
 
 export type TransactionStatus = {
     in_transaction: boolean;
+};
+
+export type OpenTransactions = {
+    tab_ids: Array<string>;
+};
+
+export type SavedConnection = {
+    name: string;
+    url: string;
+};
+
+export type SavedConnections = {
+    connections: Array<SavedConnection>;
 };
 
 export type ExportRequest = {
@@ -660,6 +677,22 @@ export type RollbackTransactionResponses = {
 
 export type RollbackTransactionResponse = RollbackTransactionResponses[keyof RollbackTransactionResponses];
 
+export type ListOpenTransactionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/transactions';
+};
+
+export type ListOpenTransactionsResponses = {
+    /**
+     * Open transactions
+     */
+    200: OpenTransactions;
+};
+
+export type ListOpenTransactionsResponse = ListOpenTransactionsResponses[keyof ListOpenTransactionsResponses];
+
 export type ExportQueryData = {
     body: ExportRequest;
     path?: never;
@@ -845,6 +878,38 @@ export type SaveTabStateResponses = {
 };
 
 export type SaveTabStateResponse = SaveTabStateResponses[keyof SaveTabStateResponses];
+
+export type ListSavedConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/connections';
+};
+
+export type ListSavedConnectionsResponses = {
+    /**
+     * Saved connections
+     */
+    200: SavedConnections;
+};
+
+export type ListSavedConnectionsResponse = ListSavedConnectionsResponses[keyof ListSavedConnectionsResponses];
+
+export type SaveConnectionsData = {
+    body: SavedConnections;
+    path?: never;
+    query?: never;
+    url: '/api/connections';
+};
+
+export type SaveConnectionsResponses = {
+    /**
+     * Success
+     */
+    200: SuccessResponse;
+};
+
+export type SaveConnectionsResponse = SaveConnectionsResponses[keyof SaveConnectionsResponses];
 
 export type AiGenerateData = {
     body: AiGenerateRequest;

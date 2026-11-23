@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,9 +14,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/lmittmann/tint"
 	"github.com/macleodmac/pglet/internal/api"
 	"github.com/macleodmac/pglet/internal/client"
@@ -46,10 +49,9 @@ func main() {
 
 	cfg := parseConfig()
 
-	// Setup repository
-	repoDir := resolveRepoDir(cfg)
-	repoPath := filepath.Join(repoDir, "pglet.db")
-	repo, err := repository.Open(repoPath)
+	storeDir := resolveStoreDir(cfg)
+	repoPath := filepath.Join(storeDir, "pglet.db")
+	repo, err := repository.Open(repoPath, resolveSharedQueriesDir(storeDir))
 	if err != nil {
 		slog.Error("failed to open repository", "err", err)
 		os.Exit(1)
@@ -57,11 +59,6 @@ func main() {
 	defer repo.Close()
 
 	slog.Debug("repository opened", "path", repoPath, "elapsed", time.Since(start))
-
-	// Import shared queries from .pglet/queries/
-	if err := repo.ImportSharedQueries(repoDir); err != nil {
-		slog.Warn("failed to import shared queries", "err", err)
-	}
 
 	// Setup service and server
 	svc := service.New(repo, getVersion())
@@ -78,8 +75,9 @@ func main() {
 				svc.SetConnecting(false)
 				return
 			}
-			svc.SetClient(cl) // also clears connecting
-			slog.Info("connected", "database", cl.Database(), "elapsed", time.Since(start))
+			if svc.SetInitialClient(cl) {
+				slog.Info("connected", "database", cl.Database(), "elapsed", time.Since(start))
+			}
 		}()
 	}
 
@@ -89,41 +87,63 @@ func main() {
 		slog.Error("failed to load OpenAPI spec", "err", err)
 		os.Exit(1)
 	}
-	swagger.Servers = nil // clear servers so validator doesn't check host
+	// A relative server URL lets the validator match paths under the prefix
+	// without checking the host.
+	swagger.Servers = openapi3.Servers{{URL: cfg.Prefix + "/"}}
 
-	// Build handler with validation middleware
-	baseURL := cfg.Prefix
-	if baseURL == "/" {
-		baseURL = ""
-	}
 	var handler http.Handler
 	handler = api.HandlerWithOptions(server, api.StdHTTPServerOptions{
-		BaseURL:     baseURL,
-		Middlewares: []api.MiddlewareFunc{nethttpmiddleware.OapiRequestValidator(swagger)},
+		BaseURL: cfg.Prefix,
+		Middlewares: []api.MiddlewareFunc{nethttpmiddleware.OapiRequestValidatorWithOptions(swagger, &nethttpmiddleware.Options{
+			SilenceServersWarning: true,
+		})},
 	})
-
-	// Apply middleware
 	handler = api.LoggingMiddleware(handler)
-	handler = api.RecoveryMiddleware(handler)
-	if cfg.Cors || cfg.Dev {
-		handler = api.CorsMiddleware(handler)
-	}
 
-	// Serve frontend (SPA fallback)
 	if !cfg.Dev {
 		frontendFS, err := fs.Sub(static.Frontend, "dist")
+		if err == nil {
+			handler, err = spaHandler(handler, frontendFS, cfg.Prefix)
+		}
 		if err != nil {
 			slog.Error("failed to setup frontend", "err", err)
 			os.Exit(1)
 		}
-		handler = spaHandler(handler, http.FS(frontendFS))
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Bind, cfg.Listen)
-	slog.Info("listening", "version", getVersion(), "addr", fmt.Sprintf("http://%s", addr), "startup", time.Since(start))
-
+	loopback := isLoopbackBind(cfg.Bind)
+	guard := api.Guard{
+		LoopbackOnly: loopback,
+		Prefix:       cfg.Prefix,
+		CookieName:   fmt.Sprintf("pglet_token_%d", cfg.Listen),
+	}
+	// The dev UI is served by Vite, which never sees the token link.
 	if !cfg.Dev {
-		go openBrowser(fmt.Sprintf("http://%s", addr))
+		guard.Token, err = repo.AuthToken()
+		if err != nil {
+			slog.Error("failed to load auth token", "err", err)
+			os.Exit(1)
+		}
+	}
+	handler = guard.Middleware(handler)
+	if len(cfg.CorsOrigins) > 0 {
+		handler = api.CorsMiddleware(cfg.CorsOrigins)(handler)
+	}
+	handler = api.RecoveryMiddleware(handler)
+
+	addr := net.JoinHostPort(cfg.Bind, strconv.Itoa(cfg.Listen))
+	appURL := fmt.Sprintf("http://%s%s/", addr, cfg.Prefix)
+	if guard.Token != "" {
+		appURL += "?token=" + guard.Token
+	}
+	slog.Info("listening", "version", getVersion(), "addr", addr, "startup", time.Since(start))
+	fmt.Fprintf(os.Stderr, "\n  Open pglet: %s\n\n", appURL)
+	if !loopback {
+		slog.Warn("listening beyond this machine; anyone who has the link above can use your database", "bind", cfg.Bind)
+	}
+
+	if cfg.OpenBrowser && !cfg.Dev {
+		go openBrowser(appURL)
 	}
 
 	srv := &http.Server{Addr: addr, Handler: handler}
@@ -175,8 +195,11 @@ Server:
   --prefix <path>   URL prefix (default: /)
   --open            Open browser on start
   --store-dir <dir> Data directory (default: ~/.pglet/)
-  --dev             Development mode (CORS, verbose logging)
-  --cors            Enable CORS
+  --dev             Development mode (UI served by Vite, no sign-in token)
+  --cors-origin <o> Allow API calls from this origin (repeatable)
+
+The password can also come from the PGPASSWORD environment variable, which
+keeps it out of the process list.
 
 Other:
   -h, --help        Show this help

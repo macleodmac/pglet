@@ -93,6 +93,7 @@ export function TabPanel({ tab }: { tab: Tab }) {
         onChange={(sql) => updateTab(tab.id, { sql })}
         onRun={execution.run}
         onExplain={execution.explain}
+        onCancel={execution.isRunning ? execution.cancel : undefined}
         onSave={() => setShowSaveDialog(true)}
       />
     </Suspense>
@@ -143,7 +144,6 @@ export function TabPanel({ tab }: { tab: Tab }) {
 
         <Panel id="results" minSize="10%">
           <ResultsPanel
-            sql={tab.sql}
             inTransaction={!!tab.inTransaction}
             execution={execution}
             editorRef={editorRef}
@@ -156,7 +156,8 @@ export function TabPanel({ tab }: { tab: Tab }) {
         <SaveQueryDialog
           sql={tab.sql}
           database={database}
-          existingQuery={tab.savedQueryId ? { id: tab.savedQueryId, title: tab.title, sql: tab.sql, description: '', database, tags: '', shared: false, created_at: '', updated_at: '' } : undefined}
+          savedQueryId={tab.savedQueryId}
+          onSaved={(saved) => updateTab(tab.id, { savedQueryId: saved.id, title: saved.title })}
           onClose={() => setShowSaveDialog(false)}
         />
       )}

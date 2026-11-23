@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,20 @@ type Client struct {
 	connURL string
 }
 
+// MaxRows caps how many rows a query result holds; the rest are discarded and
+// the result is marked truncated.
+const MaxRows = 10_000
+
+// maxConns bounds the pool. Each open transaction pins one connection.
+const maxConns = 20
+
+// acquireTimeout bounds the wait for a free pooled connection.
+const acquireTimeout = 10 * time.Second
+
+// ErrPoolExhausted means every pooled connection is in use, typically because
+// each is pinned by an open transaction.
+var ErrPoolExhausted = fmt.Errorf("all %d database connections are in use, mostly by open transactions; commit or roll back one and try again", maxConns)
+
 type ConnectionInfo struct {
 	Host     string
 	Port     int
@@ -31,27 +46,48 @@ type ConnectionInfo struct {
 type QueryResult struct {
 	Columns     []string
 	ColumnTypes []string
-	Rows        [][]any
+	Rows        [][]*string
 	RowCount    int
 	DurationMs  int64
 	// CommandTag is the verb of the final command, e.g. "UPDATE".
 	CommandTag string
 	// RowsAffected is nil for commands that do not report a count (DDL, BEGIN, ...).
 	RowsAffected *int64
+	// Truncated is true when the result had more than MaxRows rows.
+	Truncated bool
 }
 
 func New(connURL string) (*Client, error) {
 	db, err := sql.Open("postgres", connURL)
 	if err != nil {
-		return nil, fmt.Errorf("open connection: %w", err)
+		return nil, fmt.Errorf("open connection: %s", RedactURL(err.Error()))
 	}
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("ping: %w", err)
+		return nil, fmt.Errorf("ping: %s", RedactURL(err.Error()))
 	}
-	db.SetMaxOpenConns(5)
+	db.SetMaxOpenConns(maxConns)
 	db.SetMaxIdleConns(2)
 	return &Client{db: db, connURL: connURL}, nil
+}
+
+var urlPassword = regexp.MustCompile(`(://[^:/@\s]*:)[^@\s]*@`)
+
+// RedactURL masks the password of any connection URL inside s.
+func RedactURL(s string) string {
+	return urlPassword.ReplaceAllString(s, "${1}xxxxx@")
+}
+
+// conn borrows a connection from the pool, failing with ErrPoolExhausted
+// instead of waiting indefinitely.
+func (c *Client) conn(ctx context.Context) (*sql.Conn, error) {
+	actx, cancel := context.WithTimeout(ctx, acquireTimeout)
+	defer cancel()
+	conn, err := c.db.Conn(actx)
+	if err != nil && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+		return nil, ErrPoolExhausted
+	}
+	return conn, err
 }
 
 func (c *Client) Close() {
@@ -68,7 +104,7 @@ func (c *Client) Database() string {
 	return strings.TrimPrefix(u.Path, "/")
 }
 
-func (c *Client) Info() (*ConnectionInfo, error) {
+func (c *Client) Info(ctx context.Context) (*ConnectionInfo, error) {
 	info := &ConnectionInfo{}
 
 	u, err := url.Parse(c.connURL)
@@ -82,7 +118,7 @@ func (c *Client) Info() (*ConnectionInfo, error) {
 	}
 
 	var version string
-	if err := c.db.QueryRow("SHOW server_version").Scan(&version); err == nil {
+	if err := c.db.QueryRowContext(ctx, "SHOW server_version").Scan(&version); err == nil {
 		info.Version = version
 	}
 
@@ -98,8 +134,8 @@ func (c *Client) SwitchDatabase(database string) (*Client, error) {
 	return New(u.String())
 }
 
-func (c *Client) Databases() ([]string, error) {
-	rows, err := c.db.Query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+func (c *Client) Databases(ctx context.Context) ([]string, error) {
+	rows, err := c.db.QueryContext(ctx, "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
 	if err != nil {
 		return nil, err
 	}
@@ -116,13 +152,52 @@ func (c *Client) Databases() ([]string, error) {
 	return dbs, rows.Err()
 }
 
+// QueryWithContext runs user SQL on a pooled connection in autocommit mode.
+// Session state the SQL changes (SET, SET ROLE, prepared statements) is
+// discarded afterwards so it cannot leak into later queries from other tabs.
 func (c *Client) QueryWithContext(ctx context.Context, query string) (*QueryResult, error) {
-	return c.queryContext(ctx, query)
+	conn, err := c.conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	result, err := runQuery(ctx, conn, query)
+	if rerr := resetSession(conn); rerr != nil {
+		if err == nil && isTxStateError(rerr) {
+			err = ErrLeftTransactionOpen
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, err
 }
 
-// queryContext executes a query on a connection borrowed from the shared pool.
+// ErrLeftTransactionOpen is returned when autocommit SQL opens a transaction
+// without closing it. The connection is dropped, which rolls it back.
+var ErrLeftTransactionOpen = errors.New("the query opened a transaction without committing it, so it was rolled back; use the Begin button to keep a transaction open across runs")
+
+// resetSession runs DISCARD ALL on conn. If that fails the connection is
+// marked bad so the pool closes it rather than reusing it.
+func resetSession(conn *sql.Conn) error {
+	_, err := conn.ExecContext(context.Background(), "DISCARD ALL")
+	if err != nil {
+		conn.Raw(func(any) error { return driver.ErrBadConn })
+	}
+	return err
+}
+
+func isTxStateError(err error) bool {
+	switch SQLState(err) {
+	case "25001", "25P02":
+		return true
+	}
+	return false
+}
+
+// queryContext runs internal, read-only SQL on a pooled connection.
 func (c *Client) queryContext(ctx context.Context, query string) (*QueryResult, error) {
-	conn, err := c.db.Conn(ctx)
+	conn, err := c.conn(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +232,49 @@ func runQuery(ctx context.Context, conn *sql.Conn, query string) (*QueryResult, 
 	return result, nil
 }
 
+// streamQuery runs a single-result query and hands each row to onRow
+// without collecting them.
+func streamQuery(ctx context.Context, conn *sql.Conn, query string, onHeader func(columns, types []string) error, onRow func([]*string) error) error {
+	err := conn.Raw(func(dc any) error {
+		queryer, ok := dc.(driver.QueryerContext)
+		if !ok {
+			return errors.New("driver does not support QueryerContext")
+		}
+		rows, err := queryer.QueryContext(ctx, query, nil)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		columns := rows.Columns()
+		typeNames := columnTypes(rows, len(columns))
+		if err := onHeader(columns, typeNames); err != nil {
+			return err
+		}
+		vals := make([]driver.Value, len(columns))
+		for {
+			if err := rows.Next(vals); err == io.EOF {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			if err := onRow(formatRow(vals, typeNames)); err != nil {
+				return err
+			}
+		}
+	})
+	return withDetail(err)
+}
+
+func columnTypes(rows driver.Rows, n int) []string {
+	typeNames := make([]string, n)
+	if typed, ok := rows.(driver.RowsColumnTypeDatabaseTypeName); ok {
+		for i := range typeNames {
+			typeNames[i] = typed.ColumnTypeDatabaseTypeName(i)
+		}
+	}
+	return typeNames
+}
+
 // detailedError carries PostgreSQL's DETAIL, HINT and error position, which
 // usually say exactly what is wrong with a query.
 type detailedError struct {
@@ -168,6 +286,9 @@ func (e *detailedError) Error() string { return e.msg }
 func (e *detailedError) Unwrap() error { return e.err }
 
 func withDetail(err error) error {
+	if err == nil {
+		return nil
+	}
 	var pqErr *pq.Error
 	if !errors.As(err, &pqErr) {
 		return err
@@ -189,31 +310,22 @@ func SQLState(err error) string {
 func readRows(rows driver.Rows) (*QueryResult, error) {
 	// Non-nil so statements without a result set encode as [] rather than null.
 	columns := append([]string{}, rows.Columns()...)
-	typeNames := make([]string, len(columns))
-	if typed, ok := rows.(driver.RowsColumnTypeDatabaseTypeName); ok {
-		for i := range columns {
-			typeNames[i] = typed.ColumnTypeDatabaseTypeName(i)
-		}
-	}
+	typeNames := columnTypes(rows, len(columns))
 
-	var data [][]any
+	var data [][]*string
+	truncated := false
+	vals := make([]driver.Value, len(columns))
 	for {
-		vals := make([]driver.Value, len(columns))
 		if err := rows.Next(vals); err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
 		}
-		row := make([]any, len(vals))
-		for i, v := range vals {
-			// The driver reuses its read buffer, so bytes must be copied out.
-			if b, ok := v.([]byte); ok {
-				row[i] = string(b)
-			} else {
-				row[i] = v
-			}
+		if len(data) == MaxRows {
+			truncated = true
+			continue
 		}
-		data = append(data, row)
+		data = append(data, formatRow(vals, typeNames))
 	}
 
 	result := &QueryResult{
@@ -221,6 +333,7 @@ func readRows(rows driver.Rows) (*QueryResult, error) {
 		ColumnTypes: typeNames,
 		Rows:        data,
 		RowCount:    len(data),
+		Truncated:   truncated,
 	}
 	if tagged, ok := rows.(interface {
 		Tag() string

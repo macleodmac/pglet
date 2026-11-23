@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"os"
 	"sync"
@@ -27,7 +26,7 @@ type Service struct {
 	Version    string
 
 	queryMu sync.Mutex
-	running map[string]context.CancelFunc
+	running map[string]*runningOp
 
 	txMu sync.Mutex
 	txns map[string]*client.Tx
@@ -37,7 +36,7 @@ func New(repo *repository.Repository, version string) *Service {
 	return &Service{
 		Repo:    repo,
 		Version: version,
-		running: make(map[string]context.CancelFunc),
+		running: make(map[string]*runningOp),
 		txns:    make(map[string]*client.Tx),
 	}
 }
@@ -47,6 +46,20 @@ func (s *Service) SetClient(cl *client.Client) {
 	defer s.mu.Unlock()
 	s.client = cl
 	s.connecting = false
+}
+
+// SetInitialClient installs the client from the startup auto-connect, unless
+// the user connected from the UI first; then cl is closed and false returned.
+func (s *Service) SetInitialClient(cl *client.Client) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.connecting = false
+	if s.client != nil {
+		cl.Close()
+		return false
+	}
+	s.client = cl
+	return true
 }
 
 func (s *Service) SetConnecting(v bool) {

@@ -114,7 +114,7 @@ func TestTransaction(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return fmt.Sprint(res.Rows[0][0])
+		return *res.Rows[0][0]
 	}
 
 	t.Run("rollback discards changes", func(t *testing.T) {
@@ -278,4 +278,99 @@ func deref(p *int64) any {
 		return nil
 	}
 	return *p
+}
+
+func TestMixedCaseRelations(t *testing.T) {
+	c := testClient(t)
+	ctx := context.Background()
+	if _, err := c.QueryWithContext(ctx, `
+		DROP SCHEMA IF EXISTS "Mixed Case" CASCADE;
+		CREATE SCHEMA "Mixed Case";
+		CREATE TABLE "Mixed Case"."Users" (id int);
+		CREATE TABLE "Mixed Case".users (id int);
+		CREATE TABLE "Mixed Case"."my table" (id int);
+		COMMENT ON TABLE "Mixed Case"."Users" IS 'upper';
+		COMMENT ON COLUMN "Mixed Case"."Users".id IS 'upper id';
+		COMMENT ON COLUMN "Mixed Case".users.id IS 'lower id'`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.QueryWithContext(ctx, `DROP SCHEMA IF EXISTS "Mixed Case" CASCADE`) })
+
+	objects, err := c.Objects(ctx)
+	if err != nil {
+		t.Fatalf("Objects: %v", err)
+	}
+	comments := map[string]string{}
+	for _, o := range objects["Mixed Case"].Tables {
+		comments[o.Name] = o.Comment
+	}
+	if len(comments) != 3 || comments["Users"] != "upper" || comments["users"] != "" {
+		t.Errorf("tables = %v", comments)
+	}
+
+	cols, err := c.TableColumns(ctx, "Mixed Case.Users")
+	if err != nil {
+		t.Fatalf("TableColumns: %v", err)
+	}
+	if len(cols) != 1 || cols[0].Comment != "upper id" {
+		t.Errorf("columns = %+v", cols)
+	}
+}
+
+func TestQueryValues(t *testing.T) {
+	c := testClient(t)
+	res, err := c.QueryWithContext(context.Background(), `
+		SELECT '\xdeadbeef00ff'::bytea, '2024-01-02 03:04:05.123456'::timestamp,
+			'2024-01-02'::date, 9007199254740993::int8, NULL::text`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, v := range res.Rows[0] {
+		if v == nil {
+			got = append(got, "NULL")
+		} else {
+			got = append(got, *v)
+		}
+	}
+	want := []string{`\xdeadbeef00ff`, "2024-01-02 03:04:05.123456", "2024-01-02", "9007199254740993", "NULL"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestQueryTruncatesLargeResults(t *testing.T) {
+	c := testClient(t)
+	res, err := c.QueryWithContext(context.Background(), fmt.Sprintf("SELECT g FROM generate_series(1, %d) g", MaxRows+5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.RowCount != MaxRows || !res.Truncated {
+		t.Errorf("row count %d, truncated %v", res.RowCount, res.Truncated)
+	}
+	if res.RowsAffected == nil || *res.RowsAffected != MaxRows+5 {
+		t.Errorf("rows affected = %v, want the full count", res.RowsAffected)
+	}
+}
+
+func TestSessionStateDoesNotLeak(t *testing.T) {
+	c := testClient(t)
+	ctx := context.Background()
+	if _, err := c.QueryWithContext(ctx, "SET search_path TO pg_catalog"); err != nil {
+		t.Fatal(err)
+	}
+	for range maxConns {
+		res, err := c.QueryWithContext(ctx, "SHOW search_path")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *res.Rows[0][0] == "pg_catalog" {
+			t.Fatal("SET from an earlier query leaked into a later one")
+		}
+	}
+
+	_, err := c.QueryWithContext(ctx, "BEGIN; SELECT 1")
+	if !errors.Is(err, ErrLeftTransactionOpen) {
+		t.Errorf("BEGIN without COMMIT: err = %v", err)
+	}
 }

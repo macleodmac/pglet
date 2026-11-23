@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 )
 
@@ -15,11 +16,20 @@ type Tx struct {
 
 // Begin starts a new transaction on a dedicated connection from the pool.
 func (c *Client) Begin(ctx context.Context) (*Tx, error) {
-	conn, err := c.db.Conn(ctx)
+	return c.begin(ctx, "BEGIN")
+}
+
+// BeginReadOnly starts a transaction in which PostgreSQL rejects any write.
+func (c *Client) BeginReadOnly(ctx context.Context) (*Tx, error) {
+	return c.begin(ctx, "BEGIN READ ONLY")
+}
+
+func (c *Client) begin(ctx context.Context, stmt string) (*Tx, error) {
+	conn, err := c.conn(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := conn.ExecContext(ctx, "BEGIN"); err != nil {
+	if _, err := conn.ExecContext(ctx, stmt); err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -29,6 +39,24 @@ func (c *Client) Begin(ctx context.Context) (*Tx, error) {
 // QueryWithContext runs a query inside the transaction.
 func (t *Tx) QueryWithContext(ctx context.Context, query string) (*QueryResult, error) {
 	return runQuery(ctx, t.conn, query)
+}
+
+// Stream runs a query inside the transaction, passing each row to onRow.
+func (t *Tx) Stream(ctx context.Context, query string, onHeader func(columns, types []string) error, onRow func([]*string) error) error {
+	return streamQuery(ctx, t.conn, query, onHeader, onRow)
+}
+
+// RolledBackTo runs fn inside a savepoint and then rolls back to it, so
+// nothing fn does survives and an error in fn does not abort the transaction.
+func (t *Tx) RolledBackTo(ctx context.Context, fn func() (*QueryResult, error)) (*QueryResult, error) {
+	if _, err := t.conn.ExecContext(ctx, "SAVEPOINT pglet_probe"); err != nil {
+		return nil, err
+	}
+	result, err := fn()
+	if _, rerr := t.conn.ExecContext(context.Background(), "ROLLBACK TO SAVEPOINT pglet_probe"); rerr != nil && err == nil {
+		err = rerr
+	}
+	return result, err
 }
 
 // HasWrites reports whether the transaction has modified data or taken row
@@ -60,6 +88,11 @@ func (t *Tx) Rollback() error {
 
 func (t *Tx) finish(stmt string) (*QueryResult, error) {
 	res, err := runQuery(context.Background(), t.conn, stmt)
+	if err == nil {
+		resetSession(t.conn)
+	} else {
+		t.conn.Raw(func(any) error { return driver.ErrBadConn })
+	}
 	if cerr := t.conn.Close(); err == nil {
 		err = cerr
 	}

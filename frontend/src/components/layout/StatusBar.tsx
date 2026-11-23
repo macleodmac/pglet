@@ -1,8 +1,10 @@
 import { useConnectionStore } from '../../stores/connection'
 import { DatabaseSwitcher } from '../connection/DatabaseSwitcher'
+import { useTabStore } from '../../stores/tabs'
 
 export function StatusBar() {
   const info = useConnectionStore((s) => s.info)
+  const loadError = useTabStore((s) => s.loadError)
 
   return (
     <div className="flex h-6 items-center gap-3 border-t border-surface-200 bg-surface-50 px-3 font-mono text-xs text-gray-500 dark:border-surface-800 dark:bg-surface-900 dark:text-gray-400">
@@ -18,6 +20,11 @@ export function StatusBar() {
         </>
       ) : (
         <span>Not connected</span>
+      )}
+      {loadError && (
+        <span className="ml-auto truncate text-danger" title={loadError}>
+          {loadError}
+        </span>
       )}
     </div>
   )

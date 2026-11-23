@@ -8,7 +8,8 @@ A fast, single-binary PostgreSQL database browser. Connect to any PostgreSQL ser
 - **SQL editor** — Monaco-based editor with syntax highlighting and multi-tab support
 - **Table inspector** — browse rows with sorting and pagination, view columns, indexes, constraints, and size info
 - **Query history** — automatic logging of every query with duration and row counts
-- **Saved queries** — organize and share frequently used queries, with file-based import from `.pglet/queries/`
+- **Saved queries** — organize frequently used queries; share them through `.pglet/queries/*.sql` files in a project
+- **Safe writes** — optionally hold any query that changes data in a transaction until you commit or roll back
 - **Export** — download query results as CSV or JSON
 - **AI SQL generation** — natural language to SQL via Claude API (optional, requires `ANTHROPIC_API_KEY`)
 - **Server monitoring** — view active queries (`pg_stat_activity`), server settings, and table statistics
@@ -25,19 +26,29 @@ make build
 ./pglet
 
 # Or connect on startup
-./pglet --url postgres://user:pass@localhost:5432/mydb
+./pglet --url postgres://user@localhost:5432/mydb
 
-# Or with individual flags
-./pglet --host localhost --port 5432 --user postgres --db mydb
+# Or with individual flags (the password can come from PGPASSWORD)
+PGPASSWORD=secret ./pglet --host localhost --port 5432 --user postgres --db mydb
 ```
 
-Open `http://localhost:8081` in your browser.
+pglet prints a link such as `http://localhost:8081/?token=…`. Open it once (or pass `--open`) and the browser stays signed in; the token is kept in the data directory, so the same link works after a restart.
+
+## Security
+
+pglet holds a live connection to your database, so it guards the API:
+
+- It listens on `localhost` only by default, and rejects requests addressed to any other host name, which defeats DNS-rebinding attacks from websites you visit.
+- Every API request needs the sign-in cookie set by the token link, plus an `X-Pglet` header that other websites cannot send.
+- Cross-origin calls are refused unless you allow an origin with `--cors-origin`.
+
+`--bind 0.0.0.0` makes pglet reachable from your network; anyone with the link can then use your database, so only do this on a network you trust.
 
 ## Installation
 
 ### From source
 
-Requires Go 1.22+ and Node.js 18+ with pnpm.
+Requires Go 1.26+ and Node.js 20+ with pnpm.
 
 ```bash
 git clone https://github.com/macleodmac/pglet.git
@@ -56,7 +67,7 @@ Connection:
   --host <host>     Database host
   --port <port>     Database port (default: 5432)
   --user <user>     Database user
-  --pass <pass>     Database password
+  --pass <pass>     Database password (prefer PGPASSWORD: flags show up in ps)
   --db <name>       Database name
   --ssl <mode>      SSL mode (default: disable)
 
@@ -66,8 +77,8 @@ Server:
   --prefix <path>   URL prefix (default: /)
   --open            Open browser on start
   --store-dir <dir> Data directory (default: ~/.pglet/)
-  --dev             Development mode (CORS, verbose logging)
-  --cors            Enable CORS
+  --dev             Development mode (UI served by Vite, no sign-in token)
+  --cors-origin <o> Allow API calls from this origin (repeatable)
 
 Other:
   -h, --help        Show help
@@ -121,11 +132,12 @@ Frontend (React 19, Vite 7, Tailwind v4, TanStack Query v5, Monaco, Zustand)
 | Repository | `internal/repository/` | bbolt-based persistence for saved queries, history, settings, tab state. |
 | AI | `internal/ai/` | Anthropic Claude API client for SQL generation. |
 
-Middleware chain (net/http):
-- OpenAPI request validation via `oapi-codegen/nethttp-middleware`
-- Structured logging with `log/slog`
+Middleware chain (net/http), outermost first:
 - Panic recovery
-- CORS (development mode)
+- CORS for `--cors-origin` origins only
+- Guard: loopback `Host` check, sign-in cookie, `X-Pglet` header
+- Structured logging with `log/slog`
+- OpenAPI request validation via `oapi-codegen/nethttp-middleware`
 
 ### Frontend
 
@@ -147,17 +159,31 @@ Set the `ANTHROPIC_API_KEY` environment variable to enable AI features:
 ANTHROPIC_API_KEY=sk-ant-... ./pglet --url postgres://localhost/mydb
 ```
 
+## Running queries
+
+- Results keep the first 10,000 rows; the toolbar says when a result was cut short, and **All rows** downloads the full result by re-running the query in a read-only transaction.
+- CSV and JSON export save the rows on screen; nothing is re-run.
+- Outside a transaction, each run gets a fresh session: settings changed with `SET` (and `SET ROLE`) are reset afterwards. Use **Begin** to keep a session, and its settings, across runs.
+- `BEGIN`, `COMMIT` and `ROLLBACK` can't be typed while a transaction is open or safe writes is on; use the buttons. Explain and Analyze take a single statement, and Analyze is always rolled back.
+- Connecting, reconnecting or switching database rolls back every open transaction.
+
 ## Data Storage
 
-pglet stores its data in a `.pglet/` directory:
+pglet keeps its private data in `~/.pglet/` (or `--store-dir <path>`):
 
-- **Default location**: `~/.pglet/`
-- **Project-local**: if a `.pglet/` directory exists in or above the current working directory, it is used instead
-- **Custom**: `--store-dir <path>`
+- `pglet.db` — bbolt database: query history, tab state, saved connections, saved queries and the sign-in token
 
-Contents:
-- `pglet.db` — bbolt database (saved queries, history, settings, tab state)
-- `queries/` — shared query files (`.sql`) that are imported on startup
+Shared queries are `.sql` files in the nearest `.pglet/queries/` directory at or above the working directory (or `~/.pglet/queries/`). The files are the source of truth: editing or deleting a shared query in pglet changes the file. Each file starts with a header:
+
+```sql
+-- pglet-query
+-- @title: Active users
+-- @description: Users seen in the last 30 days
+-- @database: *
+-- @tags: users
+
+SELECT * FROM users WHERE last_seen > now() - interval '30 days';
+```
 
 ## License
 

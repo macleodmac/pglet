@@ -51,6 +51,15 @@ func (r *Repository) ListSavedQueries(database string) ([]SavedQuery, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list saved queries: %w", err)
 	}
+	shared, err := r.listSharedQueries()
+	if err != nil {
+		return nil, fmt.Errorf("list shared queries: %w", err)
+	}
+	for _, q := range shared {
+		if database == "" || q.Database == database || q.Database == "" {
+			result = append(result, q)
+		}
+	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].UpdatedAt > result[j].UpdatedAt
 	})
@@ -61,11 +70,14 @@ func (r *Repository) ListSavedQueries(database string) ([]SavedQuery, error) {
 }
 
 func (r *Repository) GetSavedQuery(id string) (*SavedQuery, error) {
+	if isSharedID(id) {
+		return r.getSharedQuery(id)
+	}
 	var q SavedQuery
 	err := r.db.View(func(tx *bolt.Tx) error {
 		v := tx.Bucket(bucketSavedQueries).Get([]byte(id))
 		if v == nil {
-			return fmt.Errorf("saved query not found: %s", id)
+			return ErrNotFound
 		}
 		return json.Unmarshal(v, &q)
 	})
@@ -77,6 +89,7 @@ func (r *Repository) GetSavedQuery(id string) (*SavedQuery, error) {
 
 func (r *Repository) CreateSavedQuery(q SavedQuery) (*SavedQuery, error) {
 	q.ID = newID()
+	q.Shared = false
 	now := nowUTC()
 	q.CreatedAt = now
 	q.UpdatedAt = now
@@ -95,11 +108,14 @@ func (r *Repository) CreateSavedQuery(q SavedQuery) (*SavedQuery, error) {
 }
 
 func (r *Repository) UpdateSavedQuery(q SavedQuery) error {
+	if isSharedID(q.ID) {
+		return r.updateSharedQuery(q)
+	}
 	return r.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSavedQueries)
 		v := b.Get([]byte(q.ID))
 		if v == nil {
-			return fmt.Errorf("saved query not found: %s", q.ID)
+			return ErrNotFound
 		}
 		var existing SavedQuery
 		if err := json.Unmarshal(v, &existing); err != nil {
@@ -121,89 +137,10 @@ func (r *Repository) UpdateSavedQuery(q SavedQuery) error {
 }
 
 func (r *Repository) DeleteSavedQuery(id string) error {
+	if isSharedID(id) {
+		return r.deleteSharedQuery(id)
+	}
 	return r.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket(bucketSavedQueries).Delete([]byte(id))
-	})
-}
-
-func (r *Repository) ListSharedQueries() ([]SavedQuery, error) {
-	var result []SavedQuery
-	err := r.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketSavedQueries)
-		return b.ForEach(func(k, v []byte) error {
-			var q SavedQuery
-			if err := json.Unmarshal(v, &q); err != nil {
-				return nil
-			}
-			if q.Shared {
-				result = append(result, q)
-			}
-			return nil
-		})
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list shared queries: %w", err)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Title < result[j].Title
-	})
-	if result == nil {
-		result = []SavedQuery{}
-	}
-	return result, nil
-}
-
-func (r *Repository) UpsertSharedQuery(title, sql, description, database, tags string) error {
-	return r.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketSavedQueries)
-
-		// Find existing by title + shared
-		var existingID string
-		b.ForEach(func(k, v []byte) error {
-			var q SavedQuery
-			if err := json.Unmarshal(v, &q); err != nil {
-				return nil
-			}
-			if q.Shared && q.Title == title {
-				existingID = q.ID
-			}
-			return nil
-		})
-
-		now := nowUTC()
-		if existingID != "" {
-			v := b.Get([]byte(existingID))
-			var q SavedQuery
-			if err := json.Unmarshal(v, &q); err != nil {
-				return err
-			}
-			q.SQL = sql
-			q.Description = description
-			q.Database = database
-			q.Tags = tags
-			q.UpdatedAt = now
-			data, err := json.Marshal(q)
-			if err != nil {
-				return err
-			}
-			return b.Put([]byte(existingID), data)
-		}
-
-		q := SavedQuery{
-			ID:          newID(),
-			Title:       title,
-			Description: description,
-			SQL:         sql,
-			Database:    database,
-			Tags:        tags,
-			Shared:      true,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		data, err := json.Marshal(q)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(q.ID), data)
 	})
 }

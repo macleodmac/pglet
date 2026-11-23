@@ -6,28 +6,28 @@ import (
 	"github.com/macleodmac/pglet/internal/client"
 )
 
-func (s *Service) Schemas() ([]string, error) {
+func (s *Service) Schemas(ctx context.Context) ([]string, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.Schemas()
+	return cl.Schemas(ctx)
 }
 
-func (s *Service) Objects() (map[string]*client.SchemaGroup, error) {
+func (s *Service) Objects(ctx context.Context) (map[string]*client.SchemaGroup, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.Objects()
+	return cl.Objects(ctx)
 }
 
-func (s *Service) TableColumns(table string) ([]client.Column, error) {
+func (s *Service) TableColumns(ctx context.Context, table string) ([]client.Column, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.TableColumns(table)
+	return cl.TableColumns(ctx, table)
 }
 
 func (s *Service) TableRows(ctx context.Context, table string, limit, offset int, sortCol, sortOrd string) (*client.QueryResult, int, error) {
@@ -38,58 +38,58 @@ func (s *Service) TableRows(ctx context.Context, table string, limit, offset int
 	return cl.TableRows(ctx, table, limit, offset, sortCol, sortOrd)
 }
 
-func (s *Service) TableInfo(table string) (*client.TableInfo, error) {
+func (s *Service) TableInfo(ctx context.Context, table string) (*client.TableInfo, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.TableInfo(table)
+	return cl.TableInfo(ctx, table)
 }
 
-func (s *Service) TableIndexes(table string) ([]client.TableIndex, error) {
+func (s *Service) TableIndexes(ctx context.Context, table string) ([]client.TableIndex, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.TableIndexes(table)
+	return cl.TableIndexes(ctx, table)
 }
 
-func (s *Service) TableConstraints(table string) ([]client.TableConstraint, error) {
+func (s *Service) TableConstraints(ctx context.Context, table string) ([]client.TableConstraint, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.TableConstraints(table)
+	return cl.TableConstraints(ctx, table)
 }
 
-func (s *Service) FunctionDefinition(schema, name string) (*client.FunctionDefinition, error) {
+func (s *Service) FunctionDefinition(ctx context.Context, schema, name string) (*client.FunctionDefinition, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.FunctionDefinition(schema, name)
+	return cl.FunctionDefinition(ctx, schema, name)
 }
 
-func (s *Service) TablesStats() (*client.QueryResult, error) {
+func (s *Service) TablesStats(ctx context.Context) (*client.QueryResult, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.TablesStats()
+	return cl.TablesStats(ctx)
 }
 
-func (s *Service) Activity() ([]client.Activity, error) {
+func (s *Service) Activity(ctx context.Context) ([]client.Activity, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.Activity()
+	return cl.Activity(ctx)
 }
 
-func (s *Service) ServerSettings() (*client.QueryResult, error) {
+func (s *Service) ServerSettings(ctx context.Context) (*client.QueryResult, error) {
 	cl, err := s.requireClient()
 	if err != nil {
 		return nil, err
 	}
-	return cl.ServerSettings()
+	return cl.ServerSettings(ctx)
 }

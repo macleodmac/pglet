@@ -14,7 +14,7 @@ func (s *Server) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := s.svc.Connect(req.Url)
+	info, err := s.svc.Connect(r.Context(), req.Url)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -39,7 +39,7 @@ func (s *Server) SwitchDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := s.svc.SwitchDatabase(req.Database)
+	info, err := s.svc.SwitchDatabase(r.Context(), req.Database)
 	if errors.Is(err, service.ErrNotConnected) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -56,7 +56,7 @@ func (s *Server) SwitchDatabase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
-	info, connected, connecting, err := s.svc.ConnectionInfo()
+	info, connected, connecting, err := s.svc.ConnectionInfo(r.Context())
 	if !connected {
 		c := false
 		resp := ConnectionInfo{Connected: &c}
@@ -77,7 +77,7 @@ func (s *Server) GetConnectionInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListDatabases(w http.ResponseWriter, r *http.Request) {
-	dbs, err := s.svc.Databases()
+	dbs, err := s.svc.Databases(r.Context())
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrNotConnected) {
@@ -92,4 +92,35 @@ func (s *Server) ListDatabases(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetAppInfo(w http.ResponseWriter, r *http.Request) {
 	v, aiEnabled := s.svc.AppInfo()
 	writeJSON(w, http.StatusOK, AppInfo{Version: &v, AiEnabled: &aiEnabled})
+}
+
+func (s *Server) ListSavedConnections(w http.ResponseWriter, r *http.Request) {
+	conns, err := s.svc.SavedConnections()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	result := SavedConnections{Connections: make([]SavedConnection, len(conns))}
+	for i, c := range conns {
+		result.Connections[i] = SavedConnection{Name: c.Name, Url: c.URL}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) SaveConnections(w http.ResponseWriter, r *http.Request) {
+	var req SavedConnections
+	if err := readJSON(r, &req); err != nil {
+		writeErrMsg(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	conns := make([]service.SavedConnection, len(req.Connections))
+	for i, c := range req.Connections {
+		conns[i] = service.SavedConnection{Name: c.Name, URL: c.Url}
+	}
+	if err := s.svc.SaveConnections(conns); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	success := true
+	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
 }

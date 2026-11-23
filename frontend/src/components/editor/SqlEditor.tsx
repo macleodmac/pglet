@@ -18,7 +18,8 @@ interface SqlEditorProps {
   value: string
   onChange: (value: string) => void
   onRun: (selectedText?: string) => void
-  onExplain: () => void
+  onExplain: (selectedText?: string) => void
+  onCancel?: () => void
   onSave?: () => void
 }
 
@@ -72,7 +73,7 @@ const handleBeforeMount: BeforeMount = (monaco) => {
 }
 
 export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
-  { value, onChange, onRun, onExplain, onSave },
+  { value, onChange, onRun, onExplain, onCancel, onSave },
   ref,
 ) {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
@@ -111,6 +112,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const onRunRef = useRef(onRun)
   const onExplainRef = useRef(onExplain)
   const onSaveRef = useRef(onSave)
+  const onCancelRef = useRef(onCancel)
+  onCancelRef.current = onCancel
   onRunRef.current = onRun
   onExplainRef.current = onExplain
   onSaveRef.current = onSave
@@ -152,8 +155,20 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         id: 'explain-query',
         label: 'Explain Query',
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE],
-        run: () => onExplainRef.current(),
+        run: (ed) => {
+          const selection = ed.getSelection()
+          const model = ed.getModel()
+          const selected = selection && !selection.isEmpty() && model ? model.getValueInRange(selection) : ''
+          onExplainRef.current(selected.trim() ? selected : undefined)
+        },
       })
+
+      // Only when Escape isn't closing one of the editor's own widgets.
+      editor.addCommand(
+        monaco.KeyCode.Escape,
+        () => onCancelRef.current?.(),
+        '!suggestWidgetVisible && !findWidgetVisible && !parameterHintsVisible && !inSnippetMode',
+      )
 
       editor.addAction({
         id: 'save-query',

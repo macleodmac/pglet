@@ -27,7 +27,7 @@ func (s *Server) ListSavedQueries(w http.ResponseWriter, r *http.Request, params
 func (s *Server) GetSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
 	q, err := s.svc.GetSavedQuery(id)
 	if err != nil {
-		writeErrMsg(w, http.StatusNotFound, "query not found")
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	writeJSON(w, http.StatusOK, repoToSavedQuery(*q))
@@ -76,7 +76,7 @@ func (s *Server) UpdateSavedQuery(w http.ResponseWriter, r *http.Request, id str
 	}
 
 	if err := s.svc.UpdateSavedQuery(sq); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	success := true
@@ -85,7 +85,7 @@ func (s *Server) UpdateSavedQuery(w http.ResponseWriter, r *http.Request, id str
 
 func (s *Server) DeleteSavedQuery(w http.ResponseWriter, r *http.Request, id string) {
 	if err := s.svc.DeleteSavedQuery(id); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		writeErr(w, svcStatus(err), err)
 		return
 	}
 	success := true

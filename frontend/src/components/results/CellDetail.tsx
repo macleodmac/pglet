@@ -9,9 +9,17 @@ interface CellDetailProps {
   onClose: () => void
 }
 
+/** True when a number in the JSON text has more digits than a JS number holds exactly. */
+function hasUnsafeNumber(json: string): boolean {
+  const outsideStrings = json.replace(/"(?:[^"\\]|\\.)*"/g, '""')
+  return /\d{16,}/.test(outsideStrings)
+}
+
+/** JSON that the tree viewer can show without changing any value. */
 function isJson(value: string): boolean {
   if (!value) return false
   const trimmed = value.trim()
+  if (hasUnsafeNumber(trimmed)) return false
   if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
     try {
       JSON.parse(trimmed)

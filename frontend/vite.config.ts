@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig({
+  // Relative asset URLs, resolved against the <base> the server injects, so
+  // the build works under any --prefix.
+  base: './',
   plugins: [
     react(),
     tailwindcss(),

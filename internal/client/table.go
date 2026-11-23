@@ -38,10 +38,10 @@ type TableConstraint struct {
 	Definition string
 }
 
-func (c *Client) TableColumns(table string) ([]Column, error) {
+func (c *Client) TableColumns(ctx context.Context, table string) ([]Column, error) {
 	schema, name := splitTableName(table)
 
-	rows, err := c.db.Query(`
+	rows, err := c.db.QueryContext(ctx, `
 		SELECT
 			c.column_name,
 			c.data_type,
@@ -60,11 +60,10 @@ func (c *Client) TableColumns(table string) ([]Column, error) {
 				 LIMIT 1),
 				false
 			),
-			COALESCE(
-				col_description((c.table_schema || '.' || c.table_name)::regclass, c.ordinal_position),
-				''
-			)
+			COALESCE(col_description(pc.oid, c.ordinal_position::int), '')
 		FROM information_schema.columns c
+		LEFT JOIN pg_namespace pn ON pn.nspname = c.table_schema
+		LEFT JOIN pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = c.table_name
 		WHERE c.table_schema = $1 AND c.table_name = $2
 		ORDER BY c.ordinal_position`, schema, name)
 	if err != nil {
@@ -115,12 +114,12 @@ func (c *Client) TableRows(ctx context.Context, table string, limit, offset int,
 	return result, total, nil
 }
 
-func (c *Client) TableInfo(table string) (*TableInfo, error) {
+func (c *Client) TableInfo(ctx context.Context, table string) (*TableInfo, error) {
 	schema, name := splitTableName(table)
 	fqn := fmt.Sprintf("%s.%s", quoteIdent(schema), quoteIdent(name))
 
 	info := &TableInfo{}
-	err := c.db.QueryRow(`
+	err := c.db.QueryRowContext(ctx, `
 		SELECT
 			pg_size_pretty(pg_total_relation_size($1::regclass)),
 			pg_size_pretty(pg_table_size($1::regclass)),
@@ -133,10 +132,10 @@ func (c *Client) TableInfo(table string) (*TableInfo, error) {
 	return info, nil
 }
 
-func (c *Client) TableIndexes(table string) ([]TableIndex, error) {
+func (c *Client) TableIndexes(ctx context.Context, table string) ([]TableIndex, error) {
 	schema, name := splitTableName(table)
 
-	rows, err := c.db.Query(`
+	rows, err := c.db.QueryContext(ctx, `
 		SELECT
 			i.relname,
 			pg_get_indexdef(i.oid),
@@ -164,10 +163,10 @@ func (c *Client) TableIndexes(table string) ([]TableIndex, error) {
 	return indexes, rows.Err()
 }
 
-func (c *Client) TableConstraints(table string) ([]TableConstraint, error) {
+func (c *Client) TableConstraints(ctx context.Context, table string) ([]TableConstraint, error) {
 	schema, name := splitTableName(table)
 
-	rows, err := c.db.Query(`
+	rows, err := c.db.QueryContext(ctx, `
 		SELECT
 			con.conname,
 			con.contype::text,

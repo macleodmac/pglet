@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/macleodmac/pglet/internal/client"
 )
@@ -22,8 +25,10 @@ func testService(t *testing.T) *Service {
 	svc.SetClient(cl)
 	t.Cleanup(func() {
 		svc.rollbackAllTransactions()
-		cl.QueryWithContext(context.Background(), "DROP SCHEMA IF EXISTS pglet_test_service CASCADE")
-		cl.Close()
+		// The test may have replaced the client, e.g. by reconnecting.
+		current := svc.GetClient()
+		current.QueryWithContext(context.Background(), "DROP SCHEMA IF EXISTS pglet_test_service CASCADE")
+		current.Close()
 	})
 
 	if _, err := cl.QueryWithContext(context.Background(), `
@@ -113,4 +118,155 @@ func TestRunQuerySafeWrites(t *testing.T) {
 			t.Errorf("rows = %d, want 2", got)
 		}
 	})
+}
+
+func TestWritesCannotEscapeReview(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	count := func(t *testing.T) string {
+		t.Helper()
+		res, _, err := svc.RunQuery(ctx, "counter", "SELECT count(*) FROM pglet_test_service.t", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return *res.Rows[0][0]
+	}
+
+	t.Run("COMMIT inside safe writes is rejected", func(t *testing.T) {
+		_, _, err := svc.RunQuery(ctx, "tab", "DELETE FROM pglet_test_service.t; COMMIT", true)
+		if !errors.Is(err, ErrTxControl) {
+			t.Fatalf("err = %v, want ErrTxControl", err)
+		}
+		if got := count(t); got != "2" {
+			t.Errorf("rows = %s, want 2", got)
+		}
+	})
+
+	t.Run("COMMIT inside an open transaction is rejected", func(t *testing.T) {
+		if err := svc.BeginTransaction(ctx, "tx-tab"); err != nil {
+			t.Fatal(err)
+		}
+		defer svc.RollbackTransaction("tx-tab")
+		if _, _, err := svc.RunQuery(ctx, "tx-tab", "COMMIT", false); !errors.Is(err, ErrTxControl) {
+			t.Errorf("err = %v, want ErrTxControl", err)
+		}
+		if !svc.InTransaction("tx-tab") {
+			t.Error("transaction was closed")
+		}
+	})
+
+	t.Run("EXPLAIN ANALYZE is rolled back", func(t *testing.T) {
+		if _, err := svc.ExplainQuery(ctx, "tab", "DELETE FROM pglet_test_service.t", true); err != nil {
+			t.Fatal(err)
+		}
+		if got := count(t); got != "2" {
+			t.Errorf("rows = %s, want 2", got)
+		}
+	})
+
+	t.Run("EXPLAIN ANALYZE inside a transaction keeps it usable", func(t *testing.T) {
+		if err := svc.BeginTransaction(ctx, "tx-tab"); err != nil {
+			t.Fatal(err)
+		}
+		defer svc.RollbackTransaction("tx-tab")
+		if _, _, err := svc.RunQuery(ctx, "tx-tab", "DELETE FROM pglet_test_service.t WHERE n = 1", false); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.ExplainQuery(ctx, "tx-tab", "SELECT * FROM missing_table", true); err == nil {
+			t.Fatal("expected error")
+		}
+		res, _, err := svc.RunQuery(ctx, "tx-tab", "SELECT count(*) FROM pglet_test_service.t", false)
+		if err != nil {
+			t.Fatalf("transaction aborted by failed explain: %v", err)
+		}
+		if *res.Rows[0][0] != "1" {
+			t.Errorf("rows in transaction = %s, want 1", *res.Rows[0][0])
+		}
+	})
+
+	t.Run("EXPLAIN refuses a second statement", func(t *testing.T) {
+		_, err := svc.ExplainQuery(ctx, "tab", "SELECT 1; DELETE FROM pglet_test_service.t", false)
+		if !errors.Is(err, client.ErrMultipleStatements) {
+			t.Errorf("err = %v", err)
+		}
+		if got := count(t); got != "2" {
+			t.Errorf("rows = %s, want 2", got)
+		}
+	})
+
+	t.Run("export is read-only", func(t *testing.T) {
+		err := svc.ExportQuery(ctx, "DELETE FROM pglet_test_service.t RETURNING n",
+			func(_, _ []string) error { return nil }, func([]*string) error { return nil })
+		if client.SQLState(err) != "25006" {
+			t.Errorf("err = %v, want read-only transaction error", err)
+		}
+		if got := count(t); got != "2" {
+			t.Errorf("rows = %s, want 2", got)
+		}
+	})
+
+	t.Run("export streams every row", func(t *testing.T) {
+		n := 0
+		err := svc.ExportQuery(ctx, fmt.Sprintf("SELECT g FROM generate_series(1, %d) g", client.MaxRows+1),
+			func(_, _ []string) error { return nil }, func([]*string) error { n++; return nil })
+		if err != nil || n != client.MaxRows+1 {
+			t.Errorf("rows = %d, err = %v", n, err)
+		}
+	})
+}
+
+func TestTransactionsDoNotWedgeTheServer(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+
+	t.Run("commit still works while a begin waits for a connection", func(t *testing.T) {
+		var tabs []string
+		for i := range 20 {
+			tab := fmt.Sprintf("tab-%d", i)
+			if err := svc.BeginTransaction(ctx, tab); err != nil {
+				t.Fatalf("begin %s: %v", tab, err)
+			}
+			tabs = append(tabs, tab)
+		}
+		waiting := make(chan error, 1)
+		go func() { waiting <- svc.BeginTransaction(ctx, "one-too-many") }()
+
+		done := make(chan error, 1)
+		go func() { done <- svc.RollbackTransaction(tabs[0]) }()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("rollback blocked behind a waiting begin")
+		}
+		if err := <-waiting; err != nil {
+			t.Errorf("waiting begin: %v", err)
+		}
+		svc.rollbackAllTransactions()
+	})
+
+	t.Run("a second query in the same tab is refused", func(t *testing.T) {
+		go svc.RunQuery(ctx, "busy", "SELECT pg_sleep(1)", false)
+		time.Sleep(200 * time.Millisecond)
+		if _, _, err := svc.RunQuery(ctx, "busy", "SELECT 1", false); !errors.Is(err, ErrQueryRunning) {
+			t.Errorf("err = %v, want ErrQueryRunning", err)
+		}
+		svc.CancelQuery("busy")
+	})
+}
+
+func TestConnectRollsBackOpenTransactions(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	if err := svc.BeginTransaction(ctx, "tab"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Connect(ctx, os.Getenv("PGLET_TEST_DATABASE_URL")); err != nil {
+		t.Fatal(err)
+	}
+	if svc.InTransaction("tab") {
+		t.Error("transaction survived reconnecting")
+	}
 }

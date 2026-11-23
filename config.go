@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -20,7 +24,7 @@ type Config struct {
 	OpenBrowser bool
 	RepoDir     string
 	Dev         bool
-	Cors        bool
+	CorsOrigins []string
 }
 
 func parseConfig() Config {
@@ -99,30 +103,64 @@ func parseConfig() Config {
 			}
 		case "--dev":
 			cfg.Dev = true
-		case "--cors":
-			cfg.Cors = true
+		case "--cors-origin":
+			if i+1 < len(args) {
+				cfg.CorsOrigins = append(cfg.CorsOrigins, strings.TrimSuffix(args[i+1], "/"))
+				i++
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "unknown flag %s (see --help)\n", args[i])
+			os.Exit(2)
 		}
 	}
 
-	// Also check env vars
 	if os.Getenv("PGLET_DEV") == "1" {
 		cfg.Dev = true
 	}
+	cfg.Prefix = normalizePrefix(cfg.Prefix)
 
 	return cfg
 }
 
-func resolveRepoDir(cfg Config) string {
+// normalizePrefix turns "/", "pg", "/pg/" into "", "/pg", "/pg".
+func normalizePrefix(p string) string {
+	p = strings.Trim(p, "/")
+	if p == "" {
+		return ""
+	}
+	return "/" + p
+}
+
+// isLoopbackBind reports whether addr only accepts connections from this
+// machine.
+func isLoopbackBind(addr string) bool {
+	if strings.EqualFold(addr, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(addr, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+// resolveStoreDir is where pglet keeps its private data (history, tab state,
+// saved connections). It is never inside a project, so nothing private can end
+// up committed to one.
+func resolveStoreDir(cfg Config) string {
 	if cfg.RepoDir != "" {
 		return cfg.RepoDir
 	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".pglet"
+	}
+	return filepath.Join(home, ".pglet")
+}
 
-	// Walk from CWD upward looking for .pglet/
-	cwd, err := os.Getwd()
-	if err == nil {
-		dir := cwd
-		for {
-			candidate := filepath.Join(dir, ".pglet")
+// resolveSharedQueriesDir finds the nearest .pglet/queries directory at or
+// above the working directory, falling back to the store's own queries/.
+func resolveSharedQueriesDir(storeDir string) string {
+	if cwd, err := os.Getwd(); err == nil {
+		for dir := cwd; ; {
+			candidate := filepath.Join(dir, ".pglet", "queries")
 			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 				return candidate
 			}
@@ -133,13 +171,7 @@ func resolveRepoDir(cfg Config) string {
 			dir = parent
 		}
 	}
-
-	// Default to ~/.pglet/
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".pglet"
-	}
-	return filepath.Join(home, ".pglet")
+	return filepath.Join(storeDir, "queries")
 }
 
 func buildConnectionURL(cfg Config) string {
@@ -154,19 +186,17 @@ func buildConnectionURL(cfg Config) string {
 	if port == 0 {
 		port = 5432
 	}
-
-	url := fmt.Sprintf("postgres://%s", cfg.Host)
-	if cfg.User != "" {
-		userPart := cfg.User
-		if cfg.Pass != "" {
-			userPart += ":" + cfg.Pass
-		}
-		url = fmt.Sprintf("postgres://%s@%s", userPart, cfg.Host)
+	u := url.URL{
+		Scheme:   "postgres",
+		Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(port)),
+		Path:     "/" + cfg.DbName,
+		RawQuery: url.Values{"sslmode": {cfg.SSL}}.Encode(),
 	}
-	url += fmt.Sprintf(":%d", port)
-	if cfg.DbName != "" {
-		url += "/" + cfg.DbName
+	switch {
+	case cfg.User != "" && cfg.Pass != "":
+		u.User = url.UserPassword(cfg.User, cfg.Pass)
+	case cfg.User != "":
+		u.User = url.User(cfg.User)
 	}
-	url += fmt.Sprintf("?sslmode=%s", cfg.SSL)
-	return url
+	return u.String()
 }

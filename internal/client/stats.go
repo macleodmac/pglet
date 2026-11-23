@@ -15,12 +15,12 @@ type Activity struct {
 	WaitEventType string
 }
 
-func (c *Client) TablesStats() (*QueryResult, error) {
-	return c.queryContext(context.Background(), `
+func (c *Client) TablesStats(ctx context.Context) (*QueryResult, error) {
+	return c.queryContext(ctx, `
 		SELECT
 			schemaname || '.' || relname AS table,
 			n_live_tup AS rows,
-			pg_size_pretty(pg_total_relation_size(schemaname || '.' || relname)) AS total_size,
+			pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
 			n_tup_ins AS inserts,
 			n_tup_upd AS updates,
 			n_tup_del AS deletes,
@@ -32,8 +32,8 @@ func (c *Client) TablesStats() (*QueryResult, error) {
 		ORDER BY n_live_tup DESC`)
 }
 
-func (c *Client) Activity() ([]Activity, error) {
-	rows, err := c.db.Query(`
+func (c *Client) Activity(ctx context.Context) ([]Activity, error) {
+	rows, err := c.db.QueryContext(ctx, `
 		SELECT
 			pid,
 			COALESCE(datname, ''),
@@ -65,8 +65,8 @@ func (c *Client) Activity() ([]Activity, error) {
 	return activities, rows.Err()
 }
 
-func (c *Client) ServerSettings() (*QueryResult, error) {
-	return c.queryContext(context.Background(), `
+func (c *Client) ServerSettings(ctx context.Context) (*QueryResult, error) {
+	return c.queryContext(ctx, `
 		SELECT name, setting, unit, short_desc
 		FROM pg_settings
 		ORDER BY name`)

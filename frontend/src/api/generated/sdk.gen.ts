@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AiFixData, AiFixResponses, AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
+import type { AiFixData, AiFixResponses, AiGenerateData, AiGenerateResponses, AiSuggestionsData, AiSuggestionsResponses, AiTabNameData, AiTabNameResponses, AnalyzeQueryData, AnalyzeQueryResponses, BeginTransactionData, BeginTransactionResponses, CancelQueryData, CancelQueryResponses, ClearHistoryData, ClearHistoryResponses, CommitTransactionData, CommitTransactionResponses, ConnectData, ConnectErrors, ConnectResponses, CreateSavedQueryData, CreateSavedQueryResponses, DeleteSavedQueryData, DeleteSavedQueryResponses, DisconnectData, DisconnectResponses, ExplainQueryData, ExplainQueryResponses, ExportQueryData, ExportQueryErrors, ExportQueryResponses, GetActivityData, GetActivityResponses, GetAppInfoData, GetAppInfoResponses, GetConnectionInfoData, GetConnectionInfoResponses, GetFunctionDefinitionData, GetFunctionDefinitionResponses, GetSavedQueryData, GetSavedQueryResponses, GetServerSettingsData, GetServerSettingsResponses, GetTableColumnsData, GetTableColumnsResponses, GetTableConstraintsData, GetTableConstraintsResponses, GetTableIndexesData, GetTableIndexesResponses, GetTableInfoData, GetTableInfoResponses, GetTableRowsData, GetTableRowsResponses, GetTablesStatsData, GetTablesStatsResponses, GetTabStateData, GetTabStateResponses, ListDatabasesData, ListDatabasesResponses, ListHistoryData, ListHistoryResponses, ListObjectsData, ListObjectsResponses, ListOpenTransactionsData, ListOpenTransactionsResponses, ListSavedConnectionsData, ListSavedConnectionsResponses, ListSavedQueriesData, ListSavedQueriesResponses, ListSchemasData, ListSchemasResponses, RollbackTransactionData, RollbackTransactionResponses, RunQueryData, RunQueryResponses, SaveConnectionsData, SaveConnectionsResponses, SaveTabStateData, SaveTabStateResponses, SwitchDatabaseData, SwitchDatabaseResponses, UpdateSavedQueryData, UpdateSavedQueryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -202,7 +202,12 @@ export const rollbackTransaction = <ThrowOnError extends boolean = false>(option
 });
 
 /**
- * Export query results as CSV or JSON
+ * Tabs that hold an open transaction
+ */
+export const listOpenTransactions = <ThrowOnError extends boolean = false>(options?: Options<ListOpenTransactionsData, ThrowOnError>): RequestResult<ListOpenTransactionsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListOpenTransactionsResponses, unknown, ThrowOnError>({ url: '/api/transactions', ...options });
+
+/**
+ * Export the full result of a single read-only statement as CSV or JSON
  */
 export const exportQuery = <ThrowOnError extends boolean = false>(options: Options<ExportQueryData, ThrowOnError>): RequestResult<ExportQueryResponses, ExportQueryErrors, ThrowOnError> => (options.client ?? client).post<ExportQueryResponses, ExportQueryErrors, ThrowOnError>({
     url: '/api/export',
@@ -272,6 +277,23 @@ export const getTabState = <ThrowOnError extends boolean = false>(options?: Opti
  */
 export const saveTabState = <ThrowOnError extends boolean = false>(options: Options<SaveTabStateData, ThrowOnError>): RequestResult<SaveTabStateResponses, unknown, ThrowOnError> => (options.client ?? client).put<SaveTabStateResponses, unknown, ThrowOnError>({
     url: '/api/tabs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Saved connection URLs
+ */
+export const listSavedConnections = <ThrowOnError extends boolean = false>(options?: Options<ListSavedConnectionsData, ThrowOnError>): RequestResult<ListSavedConnectionsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListSavedConnectionsResponses, unknown, ThrowOnError>({ url: '/api/connections', ...options });
+
+/**
+ * Replace the saved connection list
+ */
+export const saveConnections = <ThrowOnError extends boolean = false>(options: Options<SaveConnectionsData, ThrowOnError>): RequestResult<SaveConnectionsResponses, unknown, ThrowOnError> => (options.client ?? client).put<SaveConnectionsResponses, unknown, ThrowOnError>({
+    url: '/api/connections',
     ...options,
     headers: {
         'Content-Type': 'application/json',

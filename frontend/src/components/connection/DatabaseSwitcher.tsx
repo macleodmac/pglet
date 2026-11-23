@@ -1,32 +1,26 @@
 import { useDatabases, useSwitchDatabase } from '../../api/queries'
 import { useConnectionStore } from '../../stores/connection'
 import type { ConnectionInfo } from '../../api/generated/types.gen'
+import { useTabStore } from '../../stores/tabs'
 
-/**
- * DatabaseSwitcher Component
- *
- * A dropdown for switching between available databases in the current PostgreSQL connection.
- *
- * Features:
- * - Fetches available databases using useDatabases()
- * - Displays current database from connection store
- * - Switches database on selection and updates connection store
- * - Auto-hides when only one database is available
- * - Disabled during database switch operation
- *
- * Usage:
- * ```tsx
- * <DatabaseSwitcher />
- * ```
- */
 export function DatabaseSwitcher() {
   const { data: databases } = useDatabases()
   const currentDb = useConnectionStore((s) => s.info?.database)
   const setConnected = useConnectionStore((s) => s.setConnected)
   const switchDb = useSwitchDatabase()
 
+  const openTransactions = useTabStore((s) => s.tabs.filter((t) => t.inTransaction).length)
+
   const handleSwitch = (db: string) => {
     if (db === currentDb) return
+    if (
+      openTransactions > 0 &&
+      !window.confirm(
+        `${openTransactions} tab${openTransactions > 1 ? 's have' : ' has'} an open transaction. Switching database rolls ${openTransactions > 1 ? 'them' : 'it'} back. Continue?`,
+      )
+    ) {
+      return
+    }
     switchDb.mutate(db, {
       onSuccess: (info: ConnectionInfo) => {
         setConnected(info)

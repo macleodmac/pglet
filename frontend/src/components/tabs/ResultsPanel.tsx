@@ -9,46 +9,47 @@ import { Icon } from '../ui/Icon'
 import { useAppInfo } from '../../api/queries'
 import { useSettingsStore } from '../../stores/settings'
 import type { TabExecution } from './useTabExecution'
+import { exportAllRows, exportResult, type ExportFormat } from '../../lib/export'
+import { useState } from 'react'
 
-async function downloadExport(query: string, format: 'csv' | 'json') {
-  const res = await fetch('/api/export', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, format }),
-  })
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.error || 'Export failed')
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `export.${format}`
-  document.body.appendChild(a)
-  a.click()
-  URL.revokeObjectURL(url)
-  a.remove()
-}
+// Statements PostgreSQL refuses inside a transaction block, e.g. VACUUM.
+const NOT_IN_TRANSACTION = '25001'
 
 export function ResultsPanel({
-  sql,
   inTransaction,
   execution,
   editorRef,
   onSave,
 }: {
-  sql: string
   inTransaction: boolean
   execution: TabExecution
   editorRef: RefObject<SqlEditorHandle | null>
   onSave: () => void
 }) {
-  const { result, isRunning, txPending, heldWrite, fix } = execution
+  const { result, resultSql, isRunning, txPending, txError, heldWrite, fix } = execution
   const { data: appInfo } = useAppInfo()
   const safeWrites = useSettingsStore((s) => s.safeWrites)
   const setSafeWrites = useSettingsStore((s) => s.setSafeWrites)
   const showStats = result && !result.error && !isExplainResult(result.columns)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async (format: ExportFormat, all: boolean) => {
+    if (!result) return
+    setExportError(null)
+    if (!all) {
+      exportResult(result, format)
+      return
+    }
+    setExporting(true)
+    try {
+      await exportAllRows(resultSql, format)
+    } catch (err) {
+      setExportError((err as Error).message)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -74,7 +75,7 @@ export function ResultsPanel({
         )}
         <button
           type="button"
-          onClick={execution.explain}
+          onClick={() => execution.explain(editorRef.current?.getSelectedText())}
           disabled={isRunning}
           className="flex items-center gap-1 rounded border border-surface-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-surface-100 disabled:opacity-50 dark:border-surface-700 dark:text-gray-300 dark:hover:bg-surface-800"
         >
@@ -112,6 +113,11 @@ export function ResultsPanel({
         {showStats && (
           <span className="ml-2 font-mono text-[11px] text-gray-400 dark:text-gray-500">
             {resultSummary(result)} · {result.duration_ms}ms
+            {result.truncated && (
+              <span className="ml-1 text-amber-600 dark:text-amber-400">
+                · showing the first {result.row_count.toLocaleString()}
+              </span>
+            )}
           </span>
         )}
 
@@ -120,7 +126,7 @@ export function ResultsPanel({
             <>
               <button
                 type="button"
-                onClick={() => downloadExport(sql, 'csv')}
+                onClick={() => handleExport('csv', false)}
                 className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-surface-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-surface-800 dark:hover:text-gray-300"
                 title="Export as CSV"
               >
@@ -129,13 +135,25 @@ export function ResultsPanel({
               </button>
               <button
                 type="button"
-                onClick={() => downloadExport(sql, 'json')}
+                onClick={() => handleExport('json', false)}
                 className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-surface-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-surface-800 dark:hover:text-gray-300"
                 title="Export as JSON"
               >
                 <Icon name="file-code" className="h-3 w-3" />
                 JSON
               </button>
+              {result.truncated && (
+                <button
+                  type="button"
+                  onClick={() => handleExport('csv', true)}
+                  disabled={exporting}
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-surface-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-surface-800 dark:hover:text-gray-300"
+                  title="Re-run the query read-only and download every row as CSV"
+                >
+                  <Icon name="file-csv" className="h-3 w-3" />
+                  {exporting ? 'Exporting…' : 'All rows'}
+                </button>
+              )}
               <span className="mx-0.5 h-3.5 w-px bg-surface-300 dark:bg-surface-700" />
             </>
           )}
@@ -160,6 +178,13 @@ export function ResultsPanel({
         </div>
       </div>
 
+      {(txError || exportError) && (
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-danger/30 bg-danger/10 px-3 py-1.5 text-xs text-danger">
+          <Icon name="xmark" className="h-3 w-3 flex-shrink-0" />
+          <p>{txError ?? exportError}</p>
+        </div>
+      )}
+
       {heldWrite && (
         <div className="flex flex-shrink-0 items-center gap-2 border-b border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <Icon name="shield" className="h-3 w-3 flex-shrink-0 text-amber-500" />
@@ -172,6 +197,19 @@ export function ResultsPanel({
 
       <div className="min-h-0 flex-1 overflow-auto">
         {result?.error ? (
+          <>
+          {result.error_code === NOT_IN_TRANSACTION && safeWrites && !inTransaction && (
+            <div className="flex items-center gap-2 px-3 pt-3 text-xs text-gray-600 dark:text-gray-400">
+              <p>Safe writes runs queries in a transaction, which this statement can't use.</p>
+              <button
+                type="button"
+                onClick={execution.runUnguarded}
+                className="rounded border border-amber-400/50 px-2 py-1 font-medium text-amber-700 hover:bg-amber-400/10 dark:text-amber-300"
+              >
+                Run once without safe writes
+              </button>
+            </div>
+          )}
           <QueryErrorPanel
             error={result.error}
             canFix={!!appInfo?.ai_enabled && isFixableError(result.error_code)}
@@ -182,6 +220,7 @@ export function ResultsPanel({
             onApply={execution.applyFix}
             onDismiss={fix.reset}
           />
+          </>
         ) : result && isExplainResult(result.columns) ? (
           <ExplainPlan rows={result.rows} durationMs={result.duration_ms} />
         ) : result && result.columns.length === 0 ? (

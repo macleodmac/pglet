@@ -20,22 +20,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 	result, held, err := s.svc.RunQuery(r.Context(), req.TabId, req.Query, safeWrites)
 	inTx := s.svc.InTransaction(req.TabId)
 	if err != nil {
-		var qe *service.QueryError
-		if errors.As(err, &qe) {
-			// Query execution error — return inside 200 OK per API contract
-			errMsg := qe.Error()
-			res := QueryResult{
-				Columns: []string{}, ColumnTypes: []string{},
-				Rows: [][]*CellValue{}, RowCount: 0, DurationMs: 0,
-				Error: &errMsg, InTransaction: &inTx,
-			}
-			if code := client.SQLState(qe.Err); code != "" {
-				res.ErrorCode = &code
-			}
-			writeJSON(w, http.StatusOK, res)
-			return
-		}
-		writeErr(w, svcStatus(err), err)
+		writeQueryErr(w, err, &inTx)
 		return
 	}
 
@@ -46,9 +31,7 @@ func (s *Server) RunQuery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) BeginTransaction(w http.ResponseWriter, r *http.Request) {
-	s.txAction(w, r, func(_ context.Context, tabID string) error {
-		return s.svc.BeginTransaction(tabID)
-	})
+	s.txAction(w, r, s.svc.BeginTransaction)
 }
 
 func (s *Server) CommitTransaction(w http.ResponseWriter, r *http.Request) {
@@ -81,33 +64,48 @@ func (s *Server) txAction(w http.ResponseWriter, r *http.Request, action func(co
 }
 
 func (s *Server) ExplainQuery(w http.ResponseWriter, r *http.Request) {
-	var req QueryRequest
-	if err := readJSON(r, &req); err != nil {
-		writeErrMsg(w, http.StatusBadRequest, "invalid request")
-		return
-	}
-
-	result, err := s.svc.ExplainQuery(r.Context(), req.Query)
-	if err != nil {
-		writeErr(w, svcStatus(err), err)
-		return
-	}
-	writeJSON(w, http.StatusOK, toQueryResult(result))
+	s.explain(w, r, false)
 }
 
 func (s *Server) AnalyzeQuery(w http.ResponseWriter, r *http.Request) {
+	s.explain(w, r, true)
+}
+
+func (s *Server) explain(w http.ResponseWriter, r *http.Request, analyze bool) {
 	var req QueryRequest
 	if err := readJSON(r, &req); err != nil {
 		writeErrMsg(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
-	result, err := s.svc.AnalyzeQuery(r.Context(), req.Query)
+	result, err := s.svc.ExplainQuery(r.Context(), req.TabId, req.Query, analyze)
+	inTx := s.svc.InTransaction(req.TabId)
 	if err != nil {
+		writeQueryErr(w, err, &inTx)
+		return
+	}
+	res := toQueryResult(result)
+	res.InTransaction = &inTx
+	writeJSON(w, http.StatusOK, res)
+}
+
+// writeQueryErr reports a query execution error inside a 200 result, which is
+// how the UI shows SQL errors; other errors get an HTTP error status.
+func writeQueryErr(w http.ResponseWriter, err error, inTx *bool) {
+	var qe *service.QueryError
+	if !errors.As(err, &qe) {
 		writeErr(w, svcStatus(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toQueryResult(result))
+	errMsg := qe.Error()
+	res := QueryResult{
+		Columns: []string{}, ColumnTypes: []string{},
+		Rows: [][]*CellValue{}, Error: &errMsg, InTransaction: inTx,
+	}
+	if code := client.SQLState(qe.Err); code != "" {
+		res.ErrorCode = &code
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) CancelQuery(w http.ResponseWriter, r *http.Request) {
@@ -120,4 +118,8 @@ func (s *Server) CancelQuery(w http.ResponseWriter, r *http.Request) {
 	s.svc.CancelQuery(req.TabId)
 	success := true
 	writeJSON(w, http.StatusOK, SuccessResponse{Success: &success})
+}
+
+func (s *Server) ListOpenTransactions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, OpenTransactions{TabIds: s.svc.OpenTransactions()})
 }

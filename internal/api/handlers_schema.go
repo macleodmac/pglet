@@ -2,17 +2,17 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/macleodmac/pglet/internal/ai"
 	"github.com/macleodmac/pglet/internal/client"
+	"github.com/macleodmac/pglet/internal/repository"
 	"github.com/macleodmac/pglet/internal/service"
 )
 
 func (s *Server) ListSchemas(w http.ResponseWriter, r *http.Request) {
-	schemas, err := s.svc.Schemas()
+	schemas, err := s.svc.Schemas(r.Context())
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -21,7 +21,7 @@ func (s *Server) ListSchemas(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ListObjects(w http.ResponseWriter, r *http.Request) {
-	objects, err := s.svc.Objects()
+	objects, err := s.svc.Objects(r.Context())
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -53,7 +53,7 @@ func toSchemaObjects(objs []client.SchemaObject) []SchemaObject {
 }
 
 func (s *Server) GetTableColumns(w http.ResponseWriter, r *http.Request, table string) {
-	cols, err := s.svc.TableColumns(table)
+	cols, err := s.svc.TableColumns(r.Context(), table)
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -97,13 +97,13 @@ func (s *Server) GetTableRows(w http.ResponseWriter, r *http.Request, table stri
 
 	writeJSON(w, http.StatusOK, TableRowsResult{
 		Columns: result.Columns, ColumnTypes: result.ColumnTypes,
-		Rows: toNullableRows(result.Rows), TotalCount: total,
+		Rows: nonNilRows(result.Rows), TotalCount: total,
 		Page: offset / limit, PageSize: limit,
 	})
 }
 
 func (s *Server) GetTableInfo(w http.ResponseWriter, r *http.Request, table string) {
-	info, err := s.svc.TableInfo(table)
+	info, err := s.svc.TableInfo(r.Context(), table)
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -115,7 +115,7 @@ func (s *Server) GetTableInfo(w http.ResponseWriter, r *http.Request, table stri
 }
 
 func (s *Server) GetTableIndexes(w http.ResponseWriter, r *http.Request, table string) {
-	indexes, err := s.svc.TableIndexes(table)
+	indexes, err := s.svc.TableIndexes(r.Context(), table)
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -131,7 +131,7 @@ func (s *Server) GetTableIndexes(w http.ResponseWriter, r *http.Request, table s
 }
 
 func (s *Server) GetTableConstraints(w http.ResponseWriter, r *http.Request, table string) {
-	constraints, err := s.svc.TableConstraints(table)
+	constraints, err := s.svc.TableConstraints(r.Context(), table)
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -147,7 +147,7 @@ func (s *Server) GetTableConstraints(w http.ResponseWriter, r *http.Request, tab
 
 func (s *Server) GetFunctionDefinition(w http.ResponseWriter, r *http.Request, function string) {
 	schema, name := splitQualifiedName(function)
-	fd, err := s.svc.FunctionDefinition(schema, name)
+	fd, err := s.svc.FunctionDefinition(r.Context(), schema, name)
 	if err != nil {
 		if errors.Is(err, service.ErrNotConnected) {
 			writeErr(w, http.StatusBadRequest, err)
@@ -172,7 +172,7 @@ func splitQualifiedName(name string) (string, string) {
 }
 
 func (s *Server) GetTablesStats(w http.ResponseWriter, r *http.Request) {
-	result, err := s.svc.TablesStats()
+	result, err := s.svc.TablesStats(r.Context())
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -181,7 +181,7 @@ func (s *Server) GetTablesStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetActivity(w http.ResponseWriter, r *http.Request) {
-	activities, err := s.svc.Activity()
+	activities, err := s.svc.Activity(r.Context())
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -199,7 +199,7 @@ func (s *Server) GetActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetServerSettings(w http.ResponseWriter, r *http.Request) {
-	result, err := s.svc.ServerSettings()
+	result, err := s.svc.ServerSettings(r.Context())
 	if err != nil {
 		writeErr(w, svcStatus(err), err)
 		return
@@ -210,29 +210,24 @@ func (s *Server) GetServerSettings(w http.ResponseWriter, r *http.Request) {
 func toQueryResult(qr *client.QueryResult) QueryResult {
 	res := QueryResult{
 		Columns: qr.Columns, ColumnTypes: qr.ColumnTypes,
-		Rows: toNullableRows(qr.Rows), RowCount: qr.RowCount,
+		Rows: nonNilRows(qr.Rows), RowCount: qr.RowCount,
 		DurationMs: qr.DurationMs, RowsAffected: qr.RowsAffected,
 	}
 	if qr.CommandTag != "" {
 		res.CommandTag = &qr.CommandTag
 	}
+	if qr.Truncated {
+		res.Truncated = &qr.Truncated
+	}
 	return res
 }
 
-func toNullableRows(rows [][]any) [][]*CellValue {
-	result := make([][]*CellValue, len(rows))
-	for i, row := range rows {
-		result[i] = make([]*CellValue, len(row))
-		for j, v := range row {
-			if v == nil {
-				result[i][j] = nil
-			} else {
-				str := fmt.Sprintf("%v", v)
-				result[i][j] = &str
-			}
-		}
+// nonNilRows keeps an empty result encoding as [] rather than null.
+func nonNilRows(rows [][]*string) [][]*CellValue {
+	if rows == nil {
+		return [][]*CellValue{}
 	}
-	return result
+	return rows
 }
 
 // svcStatus maps service errors to HTTP status codes.
@@ -241,8 +236,14 @@ func svcStatus(err error) int {
 		errors.Is(err, client.ErrTxAborted) {
 		return http.StatusBadRequest
 	}
-	if errors.Is(err, service.ErrTxConflict) {
+	if errors.Is(err, service.ErrTxConflict) || errors.Is(err, service.ErrQueryRunning) {
 		return http.StatusConflict
+	}
+	if errors.Is(err, client.ErrPoolExhausted) {
+		return http.StatusServiceUnavailable
+	}
+	if errors.Is(err, repository.ErrNotFound) {
+		return http.StatusNotFound
 	}
 	if errors.Is(err, ai.ErrRefused) {
 		return http.StatusUnprocessableEntity

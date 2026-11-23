@@ -226,13 +226,6 @@ export function DataGrid({ columns, columnTypes, rows, rowHeight = 26, rowOffset
               onClick: () =>
                 navigator.clipboard.writeText(JSON.stringify(contextMenu.value)),
             },
-            { label: '', separator: true, onClick: () => {} },
-            {
-              label: `Filter by ${contextMenu.column}`,
-              onClick: () => {
-                /* TODO: wire to query filter */
-              },
-            },
           ]}
           onClose={() => setContextMenu(null)}
         />

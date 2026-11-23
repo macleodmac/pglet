@@ -8,24 +8,36 @@ import (
 
 // BeginTransaction opens a transaction for the given tab. If one is already
 // open it is a no-op, keeping the button idempotent.
-func (s *Service) BeginTransaction(tabID string) error {
+func (s *Service) BeginTransaction(ctx context.Context, tabID string) error {
 	cl, err := s.requireClient()
 	if err != nil {
 		return err
 	}
-
-	s.txMu.Lock()
-	defer s.txMu.Unlock()
-	if _, ok := s.txns[tabID]; ok {
+	if s.InTransaction(tabID) {
 		return nil
 	}
 
-	tx, err := cl.Begin(context.Background())
+	// Not under txMu: waiting for a pooled connection there would block every
+	// other tab's commit and rollback, which are what free connections up.
+	tx, err := cl.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	s.txns[tabID] = tx
+	if !s.storeTx(tabID, tx) {
+		tx.Rollback()
+	}
 	return nil
+}
+
+// OpenTransactions lists the tabs that hold an open transaction.
+func (s *Service) OpenTransactions() []string {
+	s.txMu.Lock()
+	defer s.txMu.Unlock()
+	ids := make([]string, 0, len(s.txns))
+	for id := range s.txns {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // CommitTransaction commits and clears the tab's transaction.
@@ -85,8 +97,8 @@ func (s *Service) takeTx(tabID string) (*client.Tx, bool) {
 }
 
 // rollbackAllTransactions rolls back and clears every open transaction. Called
-// when the underlying connection is torn down (disconnect or database switch)
-// so pinned connections are not leaked.
+// whenever the client is replaced, so no tab keeps writing to a database the
+// UI no longer shows.
 func (s *Service) rollbackAllTransactions() {
 	s.txMu.Lock()
 	txns := s.txns

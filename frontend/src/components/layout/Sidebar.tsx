@@ -236,7 +236,7 @@ export function Sidebar({ activeSection: controlledActiveSection, onSectionChang
       {editingQuery && (
         <SaveQueryDialog
           sql={editingQuery.sql}
-          existingQuery={editingQuery}
+          savedQueryId={editingQuery.id}
           database={database}
           onClose={() => setEditingQuery(null)}
         />

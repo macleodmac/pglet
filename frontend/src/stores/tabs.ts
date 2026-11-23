@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { formatDialect } from '@avallete/sql-formatter/lite'
 import { postgresql } from '@avallete/sql-formatter/languages/postgresql'
-import { getTabState, saveTabState, rollbackTransaction } from '../api/client'
+import { getTabState, rollbackTransaction, listOpenTransactions, apiFetch } from '../api/client'
+import { useExecutionStore } from './execution'
+import { onRelease, useWindowStore } from './window'
 
 function formatSql(sql: string): string {
   if (!sql.trim()) return sql
@@ -45,8 +47,10 @@ export interface Tab {
 interface TabState {
   tabs: Tab[]
   activeTabId: string
-  /** Whether tabs have been loaded from the server */
+  /** Whether tabs have been loaded from the server; nothing is saved before */
   initialized: boolean
+  /** Saved tabs could not be loaded, so saving is off to avoid overwriting them */
+  loadError: string | null
   addQueryTab: () => void
   addTableTab: (tableName: string, preview?: boolean) => void
   addFunctionTab: (functionName: string, preview?: boolean) => void
@@ -61,6 +65,8 @@ interface TabState {
   appendAiTurn: (tabId: string, turn: AiTurn) => void
   setAiTurnIndex: (tabId: string, index: number) => void
   initFromServer: () => Promise<void>
+  /** Mark which tabs hold a server-side transaction, as the server reports it */
+  syncOpenTransactions: () => Promise<void>
 }
 
 let queryCounter = 1
@@ -81,13 +87,16 @@ export const useTabStore = create<TabState>((set, get) => ({
   tabs: [initialTab],
   activeTabId: initialTab.id,
   initialized: false,
+  loadError: null,
 
   initFromServer: async () => {
     try {
       const res = await getTabState()
+      if (res.error) throw new Error((res.error as { error?: string }).error || 'request failed')
       const raw = (res.data as { data?: string })?.data
       if (!raw) {
-        set({ initialized: true })
+        set({ initialized: true, loadError: null })
+        await get().syncOpenTransactions()
         return
       }
       const saved = JSON.parse(raw) as { tabs: Tab[]; activeTabId: string }
@@ -108,12 +117,25 @@ export const useTabStore = create<TabState>((set, get) => ({
             ? saved.activeTabId
             : saved.tabs[0].id,
           initialized: true,
+          loadError: null,
         })
       } else {
-        set({ initialized: true })
+        set({ initialized: true, loadError: null })
       }
-    } catch {
-      set({ initialized: true })
+      await get().syncOpenTransactions()
+    } catch (err) {
+      set({ loadError: `Saved tabs could not be loaded (${(err as Error).message}); changes to tabs won't be saved until you reload.` })
+    }
+  },
+
+  syncOpenTransactions: async () => {
+    const res = await listOpenTransactions()
+    if (!res.data) return
+    const open = new Set(res.data.tab_ids)
+    set((s) => ({ tabs: s.tabs.map((t) => ({ ...t, inTransaction: open.has(t.id) || undefined })) }))
+    const exec = useExecutionStore.getState()
+    for (const [id, run] of Object.entries(exec.runs)) {
+      if (run.heldWrite && !open.has(id)) exec.patch(id, { heldWrite: null })
     }
   },
 
@@ -232,22 +254,18 @@ export const useTabStore = create<TabState>((set, get) => ({
   },
 
   closeTab: (id: string) => {
-    // Roll back any open transaction owned by the closing tab so its pinned
-    // connection is released on the server.
-    const closing = get().tabs.find((t) => t.id === id)
-    if (closing?.inTransaction) {
-      rollbackTransaction({ body: { tab_id: id } }).catch(() => {})
-    }
+    // Always ask the server: its record of the tab's transaction outlives a
+    // reload, while inTransaction here might not be up to date.
+    rollbackTransaction({ body: { tab_id: id } }).catch(() => {})
+    useExecutionStore.getState().remove(id)
     set((s) => {
+      const index = s.tabs.findIndex((t) => t.id === id)
       const tabs = s.tabs.filter((t) => t.id !== id)
       if (tabs.length === 0) {
         const tab = newQueryTab()
         return { tabs: [tab], activeTabId: tab.id }
       }
-      const activeTabId =
-        s.activeTabId === id
-          ? tabs[Math.min(tabs.findIndex((_, i, arr) => arr[i]?.id !== id) || 0, tabs.length - 1)]?.id ?? tabs[0].id
-          : s.activeTabId
+      const activeTabId = s.activeTabId === id ? tabs[Math.min(index, tabs.length - 1)].id : s.activeTabId
       return { tabs, activeTabId }
     })
   },
@@ -305,15 +323,7 @@ export const useTabStore = create<TabState>((set, get) => ({
   },
 }))
 
-// --- Debounced auto-save to localStorage ---
-
-function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
-  let timer: ReturnType<typeof setTimeout>
-  return ((...args: Parameters<T>) => {
-    clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), ms)
-  }) as unknown as T
-}
+// --- Debounced auto-save to the server ---
 
 /** Strip transient/preview fields before persisting */
 function serializeForSave(state: { tabs: Tab[]; activeTabId: string }): string {
@@ -326,9 +336,29 @@ function serializeForSave(state: { tabs: Tab[]; activeTabId: string }): string {
   return JSON.stringify(payload)
 }
 
-const saveToServer = debounce((state: { tabs: Tab[]; activeTabId: string; initialized: boolean }) => {
-  if (!state.initialized) return
-  saveTabState({ body: { data: serializeForSave(state) } })
-}, 1000)
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+let pending: string | null = null
 
-useTabStore.subscribe((state) => saveToServer(state))
+function flushSave() {
+  clearTimeout(saveTimer)
+  if (pending === null) return
+  const data = pending
+  pending = null
+  // keepalive lets the request finish while the page unloads.
+  apiFetch('/api/tabs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data }),
+    keepalive: true,
+  }).catch(() => {})
+}
+
+useTabStore.subscribe((state) => {
+  if (!state.initialized || state.loadError || useWindowStore.getState().inactive) return
+  pending = serializeForSave(state)
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(flushSave, 1000)
+})
+
+window.addEventListener('pagehide', flushSave)
+onRelease(flushSave)

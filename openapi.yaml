@@ -160,11 +160,14 @@ paths:
           schema:
             type: integer
             default: 100
+            minimum: 1
+            maximum: 1000
         - name: offset
           in: query
           schema:
             type: integer
             default: 0
+            minimum: 0
         - name: sort_column
           in: query
           schema:
@@ -422,10 +425,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransactionStatus'
 
+  /api/transactions:
+    get:
+      operationId: listOpenTransactions
+      summary: Tabs that hold an open transaction
+      responses:
+        '200':
+          description: Open transactions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenTransactions'
+
   /api/export:
     post:
       operationId: exportQuery
-      summary: Export query results as CSV or JSON
+      summary: Export the full result of a single read-only statement as CSV or JSON
       requestBody:
         required: true
         content:
@@ -599,6 +614,34 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TabState'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/connections:
+    get:
+      operationId: listSavedConnections
+      summary: Saved connection URLs
+      responses:
+        '200':
+          description: Saved connections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedConnections'
+    put:
+      operationId: saveConnections
+      summary: Replace the saved connection list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedConnections'
       responses:
         '200':
           description: Success
@@ -883,6 +926,9 @@ components:
           format: int64
           nullable: true
           description: Rows inserted/updated/deleted/returned; null for commands that report no count.
+        truncated:
+          type: boolean
+          description: The result had more rows than the server keeps; only the first ones are in rows.
 
     TableRowsResult:
       type: object
@@ -941,6 +987,33 @@ components:
       properties:
         in_transaction:
           type: boolean
+
+    OpenTransactions:
+      type: object
+      required: [tab_ids]
+      properties:
+        tab_ids:
+          type: array
+          items:
+            type: string
+
+    SavedConnection:
+      type: object
+      required: [name, url]
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+
+    SavedConnections:
+      type: object
+      required: [connections]
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedConnection'
 
     ExportRequest:
       type: object

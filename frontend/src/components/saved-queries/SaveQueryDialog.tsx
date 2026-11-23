@@ -1,51 +1,58 @@
 import { useState } from 'react'
-import { useCreateSavedQuery, useUpdateSavedQuery } from '../../api/queries'
+import { useCreateSavedQuery, useSavedQuery, useUpdateSavedQuery } from '../../api/queries'
 import type { SavedQuery } from '../../api/generated'
 
 interface SaveQueryDialogProps {
   sql: string
-  existingQuery?: SavedQuery
+  /** The saved query this tab was opened from, which Save updates */
+  savedQueryId?: string
   database?: string
   onClose: () => void
-  onSaved?: () => void
+  onSaved?: (saved: { id: string; title: string }) => void
 }
 
-export function SaveQueryDialog({ sql, existingQuery, database, onClose, onSaved }: SaveQueryDialogProps) {
+export function SaveQueryDialog({ savedQueryId, ...props }: SaveQueryDialogProps) {
+  const existing = useSavedQuery(savedQueryId)
+  // A saved query deleted since the tab opened is saved as a new one.
+  if (savedQueryId && existing.isPending) return null
+  return <SaveQueryForm key={existing.data?.id ?? 'new'} existingQuery={existing.data} {...props} />
+}
+
+function SaveQueryForm({
+  sql,
+  existingQuery,
+  database,
+  onClose,
+  onSaved,
+}: Omit<SaveQueryDialogProps, 'savedQueryId'> & { existingQuery?: SavedQuery }) {
   const [title, setTitle] = useState(existingQuery?.title ?? '')
   const [description, setDescription] = useState(existingQuery?.description ?? '')
   const [tags, setTags] = useState(existingQuery?.tags ?? '')
 
   const createMutation = useCreateSavedQuery()
   const updateMutation = useUpdateSavedQuery()
+  const isPending = createMutation.isPending || updateMutation.isPending
+  const error = createMutation.error || updateMutation.error
 
   const handleSave = () => {
-    if (!title.trim()) return
+    if (!title.trim() || isPending) return
+    const done = (saved: { id: string; title: string }) => {
+      onSaved?.(saved)
+      onClose()
+    }
 
     if (existingQuery) {
       updateMutation.mutate(
-        { id: existingQuery.id, title, description, sql, database: database ?? '', tags },
-        {
-          onSuccess: () => {
-            onSaved?.()
-            onClose()
-          },
-        },
+        { id: existingQuery.id, title, description, sql, database: existingQuery.database, tags },
+        { onSuccess: () => done({ id: existingQuery.id, title }) },
       )
     } else {
       createMutation.mutate(
         { title, description, sql, database: database ?? '', tags },
-        {
-          onSuccess: () => {
-            onSaved?.()
-            onClose()
-          },
-        },
+        { onSuccess: (created) => done(created) },
       )
     }
   }
-
-  const isPending = createMutation.isPending || updateMutation.isPending
-  const error = createMutation.error || updateMutation.error
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>

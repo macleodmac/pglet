@@ -55,8 +55,11 @@ Use `pnpm`, not npm.
 - **TanStack Query hooks**: `frontend/src/api/queries.ts` wraps the generated SDK with `unwrap()`.
 - **State split**: server state in TanStack Query, UI state in Zustand, persistent state in bbolt.
 - **Per-tab execution**: query cancellation and transactions are keyed by tab ID in the Service; `components/tabs/useTabExecution.ts` is the frontend side.
-- **Safe writes**: with `safe_writes`, a query outside a transaction runs in a new one that is kept open for review only if `txid_current_if_assigned()` shows it wrote.
-- **Middleware order** (`main.go`): CORS (dev/--cors only) → Recovery → Logging → OpenAPI validation (per-route).
+- **Safe writes**: with `safe_writes`, a query outside a transaction runs in a new one that is kept open for review only if `txid_current_if_assigned()` shows it wrote. Transaction-control statements are rejected there and inside an open transaction (`client.SplitStatements`).
+- **Every path that runs user SQL must respect the tab's transaction**: explain/analyze run in a rolled-back savepoint or transaction, export in a `READ ONLY` transaction. Don't add a path that runs user SQL on the pool in autocommit.
+- **Middleware order** (`main.go`), outermost first: Recovery → CORS (`--cors-origin` only) → Guard (loopback Host, token cookie, `X-Pglet` header) → SPA/prefix → Logging → OpenAPI validation (per-route).
+- **Frontend API calls** go through the hey-api client or `apiFetch` (`api/client.ts`), which add the base path and the `X-Pglet` header; a bare `fetch('/api/…')` breaks under `--prefix` and is rejected by the guard.
+- **Per-tab UI state** (results, held write, running) lives in `stores/execution.ts` keyed by tab ID, not in component state; `TabPanel` is keyed by tab ID.
 - **Stories**: Ladle, `*.stories.tsx` next to the component. Global providers live in `frontend/.ladle/components.tsx`.
 
 ## Gotchas
